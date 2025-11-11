@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
     CPU nes;
     nes_init(&nes);
 
-    const char *file_path = "roms/DonkeyKong.nes";
+    const char *file_path = "roms/Mario.nes";
 
     if (load_program(&nes, file_path) != 0) {
         fprintf(stderr, "❌ Failed to load ROM.\n");
@@ -24,10 +24,6 @@ int main(int argc, char **argv) {
     while (1) {
         nes_emulation_cycle(&nes);
     }
-    
-
-    // Ici tu lanceras la boucle principale NES (fetch-decode-execute)
-    // par exemple : while (running) { nes_execute(&nes); ... }
 
     return 0;
 }
