@@ -264,6 +264,18 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0x08: { // PHP (Push Processor Status)
+            printf("PHP at PC=0x%04X\n", nes->PC - 1);
+
+            uint8_t status = nes->P | 0x30;
+
+            nes->ram[0x0100 + nes->SP] = status;
+            nes->SP--;
+
+            break;
+        }
+
+
         case 0x0A: { // ASL accumulator
             printf("ASL A at PC=0x%04X\n", nes->PC - 1);
 
@@ -289,6 +301,23 @@ void nes_emulation_cycle(CPU *nes) {
             printf("NOP at PC=0x%04X\n", nes->PC - 1);
             nes->PC += 2;
             break;
+        
+        case 0x0D: { // ORA absolute
+            printf("ORA absolute at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint8_t value = nes_read(nes, addr);
+
+            nes->A |= value;
+
+            nes->P &= ~(FLAG_Z | FLAG_N);
+            if (nes->A == 0) nes->P |= FLAG_Z;
+            if (nes->A & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
 
         case 0x0F: {  // SLO / ASO zeropage,X
             printf("SLO (zeropage,X) at PC=0x%04X\n", nes->PC - 1);
@@ -375,6 +404,45 @@ void nes_emulation_cycle(CPU *nes) {
             nes->P &= ~FLAG_C;
             nes->PC++;
             break;
+
+        case 0x19: { // ORA absolute,Y
+            printf("ORA absolute,Y at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint16_t effective_addr = addr + nes->Y;
+
+            uint8_t value = nes_read(nes, effective_addr);
+
+            nes->A |= value;
+
+            nes->P &= ~(FLAG_Z | FLAG_N);
+            if (nes->A == 0) nes->P |= FLAG_Z;
+            if (nes->A & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
+        case 0x1D: { // ORA absolute,X
+            printf("ORA absolute,X at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint16_t effective_addr = addr + nes->X;
+
+            uint8_t value = nes_read(nes, effective_addr);
+
+            nes->A |= value;
+
+            nes->P &= ~(FLAG_Z | FLAG_N);
+            if (nes->A == 0) nes->P |= FLAG_Z;
+            if (nes->A & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
         
         case 0x20: {
             printf("JSR at PC=0x%04X\n", nes->PC - 1);
@@ -447,6 +515,42 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0x26: { // ROL zeropage
+            printf("ROL zeropage at PC=0x%04X\n", nes->PC - 1);
+
+            uint8_t addr = nes->ram[nes->PC++];
+            
+            uint8_t val = nes->ram[addr];
+
+            uint8_t old_carry = (nes->P & FLAG_C) ? 1 : 0;
+
+            if (val & 0x80) nes->P |= FLAG_C;
+            else nes->P &= ~FLAG_C;
+
+            val = (val << 1) | old_carry;
+
+            nes->ram[addr] = val;
+
+            nes->P &= ~(FLAG_N | FLAG_Z);
+            if (val == 0) nes->P |= FLAG_Z;
+            if (val & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
+        case 0x29: { // AND immediate
+            printf("AND immediate at PC=0x%04X\n", nes->PC - 1);
+
+            uint8_t value = nes->ram[nes->PC++];
+            nes->A &= value;
+
+            nes->P &= ~(FLAG_N | FLAG_Z);
+            if (nes->A == 0) nes->P |= FLAG_Z;
+            if (nes->A & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
 
         case 0x2C: { // BIT absolute
             printf("BIT at PC=0x%04X\n", nes->PC - 1);
@@ -467,6 +571,24 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0x2D: { // AND absolute
+            printf("AND absolute at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint8_t value = nes_read(nes, addr);
+
+            nes->A &= value;
+
+            nes->P &= ~(FLAG_Z | FLAG_N);
+            if (nes->A == 0) nes->P |= FLAG_Z;
+            if (nes->A & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
+
         case 0x30: { // BMI relative
             printf("BMI at PC=0x%04X\n", nes->PC - 1);
 
@@ -479,6 +601,48 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0x34: { // NOP zeropage,X
+            printf("NOP zeropage,X at PC=0x%04X\n", nes->PC - 1);
+
+            uint8_t base = nes->ram[nes->PC++];
+            uint8_t addr = (base + nes->X) & 0xFF;
+
+            break;
+        }
+
+
+        case 0x38: { // SED — Set Decimal Flag
+            printf("SEC at PC=0x%04X\n", nes->PC - 1);
+
+            nes->P |= FLAG_C;
+            break;
+        }
+
+        case 0x3E: { // ROL absolute,X
+            printf("ROL absolute,X at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t base = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint16_t addr = base + nes->X;
+
+            uint8_t val = nes->ram[addr];
+
+            uint8_t old_carry = (nes->P & FLAG_C) ? 1 : 0;
+
+            if (val & 0x80) nes->P |= FLAG_C;
+            else nes->P &= ~FLAG_C;
+
+            val = (val << 1) | old_carry;
+
+            nes->ram[addr] = val;
+
+            nes->P &= ~(FLAG_N | FLAG_Z);
+            if (val == 0) nes->P |= FLAG_Z;
+            if (val & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
 
         case 0x40: { // RTI - Return from Interrupt
             printf("RTI at PC=0x%04X\n", nes->PC - 1);
@@ -601,6 +765,33 @@ void nes_emulation_cycle(CPU *nes) {
             }
             break;
         }
+
+        case 0x7E: { // ROR absolute,X
+            printf("ROR absolute,X at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t base = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint16_t addr = base + nes->X;
+
+            uint8_t val = nes->ram[addr];
+
+            uint8_t old_carry = (nes->P & FLAG_C) ? 0x80 : 0;
+
+            if (val & 0x01) nes->P |= FLAG_C;
+            else nes->P &= ~FLAG_C;
+
+            val = (val >> 1) | old_carry;
+
+            nes->ram[addr] = val;
+
+            nes->P &= ~(FLAG_N | FLAG_Z);
+            if (val == 0) nes->P |= FLAG_Z;
+            if (val & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
 
         case 0x78:
             printf("SEI at PC=0x%04X\n", nes->PC - 1);
@@ -889,6 +1080,21 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0xC0: { // CPY immediate
+            printf("CPY immediate at PC=0x%04X\n", nes->PC - 1);
+
+            uint8_t value = nes->prg_rom[nes->PC++];
+            uint8_t result = nes->Y - value;
+
+            nes->P &= ~(FLAG_Z | FLAG_N | FLAG_C);
+            if (nes->Y >= value) nes->P |= FLAG_C;
+            if (nes->Y == value) nes->P |= FLAG_Z;
+            if (result & 0x80)   nes->P |= FLAG_N;
+
+            break;
+        }
+
+
         case 0xC3: {
             printf("DCP at PC=0x%04X\n", nes->PC - 1);
             uint8_t zp = nes->prg_rom[nes->PC++];
@@ -985,6 +1191,24 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0xCC: { // CPY absolute
+            printf("CPY absolute at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint8_t value = nes_read(nes, addr);
+            uint8_t result = nes->Y - value;
+
+            nes->P &= ~(FLAG_Z | FLAG_N | FLAG_C);
+            if (nes->Y >= value) nes->P |= FLAG_C;
+            if (nes->Y == value) nes->P |= FLAG_Z;
+            if (result & 0x80)   nes->P |= FLAG_N;
+
+            break;
+        }
+
+
         case 0xCE: { // DEC absolute
             printf("DEC absolute at PC=0x%04X\n", nes->PC - 1);
 
@@ -1038,11 +1262,74 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0xD0: { // BNE — Branch if Not Equal (Z = 0)
+            printf("BNE at PC=0x%04X\n", nes->PC - 1);
+
+            int8_t offset = nes_read(nes, nes->PC++);
+            
+            if (!(nes->P & FLAG_Z)) {
+                nes->PC += offset;
+            }
+
+            break;
+        }
 
         case 0xD8:
             printf("CLD at PC=0x%04X\n", nes->PC - 1);
             nes->P &= ~FLAG_D;
             break;
+
+        case 0xD9: { // CMP absolute,Y
+            printf("CMP absolute,Y at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t base = nes->ram[nes->PC] | (nes->ram[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint16_t addr = base + nes->Y;
+
+            uint8_t value = nes->ram[addr];
+
+            uint8_t result = nes->A - value;
+
+            nes->P &= ~(FLAG_Z | FLAG_N | FLAG_C);
+            if (nes->A >= value) nes->P |= FLAG_C;
+            if (nes->A == value) nes->P |= FLAG_Z;
+            if (result & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
+        case 0xDC: { // NOP absolute,X (illegal)
+            printf("NOP absolute,X at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            addr += nes->X;
+
+            break;
+        }
+
+        case 0xDD: { // CMP absolute,X
+            printf("CMP absolute,X at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t base = nes->ram[nes->PC] | (nes->ram[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint16_t addr = base + nes->X;
+
+            uint8_t value = nes->ram[addr];
+
+            uint8_t result = nes->A - value;
+
+            nes->P &= ~(FLAG_Z | FLAG_N | FLAG_C);
+            if (nes->A >= value) nes->P |= FLAG_C;
+            if (nes->A == value) nes->P |= FLAG_Z;
+            if (result & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
 
         case 0xF0: {
             printf("BEQ at PC=0x%04X\n", nes->PC - 1);
@@ -1140,6 +1427,43 @@ void nes_emulation_cycle(CPU *nes) {
 
             break;
         }
+
+        case 0xF8: { // SED — Set Decimal Flag
+            printf("SED at PC=0x%04X\n", nes->PC - 1);
+
+            nes->P |= FLAG_D;
+            break;
+        }
+
+                
+        case 0xFC: { // NOP absolute,X (illegal)
+            printf("NOP absolute,X at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            addr += nes->X;
+
+            break;
+        }
+
+        case 0xFE: {  
+            printf("INC absolute,X at PC=0x%04X\n", nes->PC - 1);
+
+            uint16_t base = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+            uint16_t addr = base + nes->X;
+
+            nes->ram[addr] += 1;
+            uint8_t value = nes->ram[addr];
+
+            nes->P &= ~(FLAG_Z | FLAG_N);
+            if (value == 0) nes->P |= FLAG_Z;
+            if (value & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
 
         case 0xFF: {  // ISC / ISB / INS zeropage,X
             printf("ISC (zeropage,X) at PC=0x%04X\n", nes->PC - 1);
