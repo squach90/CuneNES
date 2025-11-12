@@ -677,6 +677,21 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0x4A: { // LSR A
+            printf("LSR A at PC=0x%04X\n", nes->PC - 1);
+
+            if (nes->A & 0x01) nes->P |= FLAG_C;
+            else nes->P &= ~FLAG_C;
+
+            nes->A >>= 1;
+
+            nes->P &= ~(FLAG_N | FLAG_Z);
+            if (nes->A == 0) nes->P |= FLAG_Z;
+ 
+            break;
+        }
+
+
         case 0x4C: { // JMP absolute
             uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
             printf("JMP to 0x%04X at PC=0x%04X\n", addr, nes->PC - 1);
@@ -1108,6 +1123,22 @@ void nes_emulation_cycle(CPU *nes) {
             if (nes->A >= value) nes->P |= FLAG_C; else nes->P &= ~FLAG_C;
             break;
         }
+
+        case 0xC4: { // CPY zeropage
+            printf("CPY zeropage at PC=0x%04X\n", nes->PC - 1);
+
+            uint8_t addr = nes->ram[nes->PC++];
+            uint8_t value = nes_read(nes, addr);
+            uint8_t result = nes->Y - value;
+
+            nes->P &= ~(FLAG_Z | FLAG_N | FLAG_C);
+            if (nes->Y >= value) nes->P |= FLAG_C;
+            if (nes->Y == value) nes->P |= FLAG_Z;
+            if (result & 0x80) nes->P |= FLAG_N;
+
+            break;
+        }
+
 
         case 0xC6: { // DEC zeropage
             printf("DEC zeropage at PC=0x%04X\n", nes->PC - 1);

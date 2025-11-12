@@ -3,7 +3,6 @@
 #include <string.h>
 #include "../includes/cpu.h"
 
-// Déclarations des fonctions que tu vas créer
 void nes_init(CPU *nes);
 int load_program(CPU *nes, const char *filename);
 
