@@ -419,7 +419,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x03: { // SLO (indirect,X)
             printf("SLO (indirect,X) at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t zp = nes->prg_rom[nes->PC++];
+            uint8_t zp = nes_read(nes, nes->PC++);
             uint8_t ptr_low = nes->ram[(zp + nes->X) & 0xFF];
             uint8_t ptr_high = nes->ram[(zp + nes->X + 1) & 0xFF];
             uint16_t addr = ptr_low | (ptr_high << 8);
@@ -445,7 +445,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0x04: { // NOP zeropage
             printf("NOP zeropage at PC=0x%04X\n", nes->PC - 1);
-            uint8_t addr = nes->prg_rom[nes->PC++];
+            uint8_t addr = nes_read(nes, nes->PC++);
             break;
         }
 
@@ -453,7 +453,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x06: { // ASL zeropage
             printf("ASL zeropage at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t addr = nes->prg_rom[nes->PC++];
+            uint8_t addr = nes_read(nes, nes->PC++);
 
             uint8_t val = nes->ram[addr];
 
@@ -472,7 +472,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0x07: { // SLO (zeropage)
             printf("SLO at PC=0x%04X\n", nes->PC - 1);
-            uint8_t addr = nes->prg_rom[nes->PC++];
+            uint8_t addr = nes_read(nes, nes->PC++);
             uint8_t value = nes->ram[addr];
 
             if (value & 0x80) nes->P |= FLAG_C; else nes->P &= ~FLAG_C;
@@ -543,7 +543,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x0F: {  // SLO / ASO zeropage,X
             printf("SLO (zeropage,X) at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t base = nes->prg_rom[nes->PC++];
+            uint8_t base = nes_read(nes, nes->PC++);
             uint8_t addr = (base + nes->X) & 0xFF;
 
             // ASL M
@@ -580,7 +580,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x13: { // SLO (Indirect),Y
             printf("SLO (Indirect),Y at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t zp = nes->prg_rom[nes->PC++];
+            uint8_t zp = nes_read(nes, nes->PC++);
             uint16_t base = nes->ram[zp] | (nes->ram[(zp + 1) & 0xFF] << 8);
             uint16_t addr = base + nes->Y;
 
@@ -602,7 +602,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x16: { // ASL zeropage,X
             printf("ASL zeropage,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t base = nes->prg_rom[nes->PC++];
+            uint8_t base = nes_read(nes, nes->PC++);
             uint8_t addr = (base + nes->X) & 0xFF;
 
             uint8_t val = nes->ram[addr];
@@ -622,7 +622,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0x17: { // ORA (Indirect),Y
             printf("ORA (Indirect),Y at PC=0x%04X\n", nes->PC - 1);
-            uint8_t zp = nes->prg_rom[nes->PC]; // adresse zero page
+            uint8_t zp = nes_read(nes, nes->PC); // adresse zero page
             nes->PC += 1;
 
             uint16_t base = nes_read(nes, zp) | (nes_read(nes, (uint8_t)(zp + 1)) << 8);
@@ -645,7 +645,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x19: { // ORA absolute,Y
             printf("ORA absolute,Y at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint16_t effective_addr = addr + nes->Y;
@@ -664,7 +664,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x1D: { // ORA absolute,X
             printf("ORA absolute,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint16_t effective_addr = addr + nes->X;
@@ -682,7 +682,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         
         case 0x20: { // JSR absolute
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             uint16_t return_addr = nes->PC + 1;
             nes->ram[0x0100 + nes->SP--] = (return_addr >> 8) & 0xFF; // Pousser l'adresse haute
             nes->ram[0x0100 + nes->SP--] = return_addr & 0xFF;        // Pousser l'adresse basse
@@ -693,7 +693,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x21: { // AND (Indirect,X)
             printf("AND (Indirect,X) at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t oper = nes->prg_rom[nes->PC++];
+            uint8_t oper = nes_read(nes, nes->PC++);
             uint8_t zp_addr = (oper + nes->X) & 0xFF;
 
             uint16_t addr = nes->ram[zp_addr] | (nes->ram[(zp_addr + 1) & 0xFF] << 8);
@@ -710,7 +710,7 @@ void nes_emulation_cycle(CPU *nes) {
 
 
         case 0x23: { // RLA (indirect,X)
-            uint8_t zp = nes->prg_rom[nes->PC++];
+            uint8_t zp = nes_read(nes, nes->PC++);
             uint16_t ptr = (uint8_t)(zp + nes->X); // stay on 0x00-0xFF
             uint16_t addr = nes->ram[ptr] | (nes->ram[(ptr+1)&0xFF] << 8);
             if (addr == 0x0000) {
@@ -738,7 +738,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x24: { // BIT zeropage
             printf("BIT zeropage at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t addr = nes->prg_rom[nes->PC++];
+            uint8_t addr = nes_read(nes, nes->PC++);
             uint8_t operand = nes_read(nes, addr);
 
             nes->P &= ~FLAG_Z;
@@ -791,7 +791,7 @@ void nes_emulation_cycle(CPU *nes) {
             printf("BIT at PC=0x%04X\n", nes->PC - 1);
             
             
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint8_t operand = nes_read(nes, addr);
@@ -809,7 +809,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x2D: { // AND absolute
             printf("AND absolute at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint8_t value = nes_read(nes, addr);
@@ -856,7 +856,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x3E: { // ROL absolute,X
             printf("ROL absolute,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t base = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t base = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint16_t addr = base + nes->X;
@@ -898,14 +898,14 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0x46: { // LSR $nn
             printf("LSR at PC=0x%04X\n", nes->PC - 1);
-            uint8_t addr = nes->prg_rom[nes->PC++];
+            uint8_t addr = nes_read(nes, nes->PC++);
             cpu_lsr(nes, addr, false);
             break;
         }
 
         case 0x49: {
             printf("EOR at PC=0x%04X\n", nes->PC - 1);
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->A = nes->A ^ nes->ram[addr];
             update_NZ_flags(nes, nes->A);
             nes->PC += 2;
@@ -928,7 +928,7 @@ void nes_emulation_cycle(CPU *nes) {
 
 
         case 0x4C: { // JMP absolute
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             printf("JMP to 0x%04X at PC=0x%04X\n", addr, nes->PC);
             nes->PC = addr;
             break;
@@ -948,7 +948,7 @@ void nes_emulation_cycle(CPU *nes) {
         }
 
         case 0x63: { // RRA (indirect,X)
-            uint8_t zp = nes->prg_rom[nes->PC++];
+            uint8_t zp = nes_read(nes, nes->PC++);
             uint16_t addr = nes->ram[(zp + nes->X) & 0xFF] | (nes->ram[(zp + nes->X + 1) & 0xFF] << 8);
             uint8_t value = nes_read(nes, addr);
 
@@ -992,7 +992,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x6B: { // ARR immediate
             printf("ARR #oper at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t operand = nes->prg_rom[nes->PC++];
+            uint8_t operand = nes_read(nes, nes->PC++);
             nes->A &= operand;
 
             bool old_c = nes->P & FLAG_C;
@@ -1019,7 +1019,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x7E: { // ROR absolute,X
             printf("ROR absolute,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t base = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t base = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint16_t addr = base + nes->X;
@@ -1058,7 +1058,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0x8E: {
             printf("STX at PC=0x%04X\n", nes->PC - 1);
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes_write(nes, addr, nes->X);
             nes->PC += 2;
             break;
@@ -1077,7 +1077,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0x95: { // STA zeropage,X
             printf("STA zeropage,X at PC=0x%04X\n", nes->PC - 1);
-            uint8_t zp_addr = nes->prg_rom[nes->PC++];
+            uint8_t zp_addr = nes_read(nes, nes->PC++);
             uint8_t addr = (zp_addr + nes->X) & 0xFF;
             nes_write(nes, addr, nes->A);
             break;
@@ -1097,7 +1097,7 @@ void nes_emulation_cycle(CPU *nes) {
         
         case 0x9D: {
             printf("STA at PC=0x%04X\n", nes->PC - 1);
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes_write(nes, addr, nes->A);
             nes->PC += 2;
             break;
@@ -1106,7 +1106,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x9E: { // SHX absolute,Y
             printf("SHX absolute,Y at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t base_addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t base_addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint16_t addr = base_addr + nes->Y;
@@ -1132,7 +1132,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xA1: { // LDA (Indirect,X)
             printf("LDA (Indirect,X) at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t zp_addr = nes->prg_rom[nes->PC];
+            uint8_t zp_addr = nes_read(nes, nes->PC);
             nes->PC++;
 
             uint8_t addr_lo = nes->ram[(zp_addr + nes->X) & 0xFF];
@@ -1161,7 +1161,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xA3: {
             printf("LAX (indirect,X) at PC=0x%04X\n", nes->PC - 1);
-            uint8_t zp = nes->prg_rom[nes->PC++];
+            uint8_t zp = nes_read(nes, nes->PC++);
             uint16_t addr = nes->ram[(zp + nes->X) & 0xFF] | (nes->ram[(zp + nes->X + 1) & 0xFF] << 8);
             uint8_t value = nes_read(nes, addr);
             nes->A = value;
@@ -1176,7 +1176,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xA5: { // LDA zeropage
             printf("LDA zeropage at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t addr = nes->prg_rom[nes->PC++];
+            uint8_t addr = nes_read(nes, nes->PC++);
             nes->A = nes->ram[addr];
 
             update_NZ_flags(nes, nes->A);
@@ -1186,7 +1186,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xA7: {
             printf("LAX zeropage at PC=0x%04X\n", nes->PC - 1);
-            uint8_t addr = nes->prg_rom[nes->PC++];
+            uint8_t addr = nes_read(nes, nes->PC++);
             uint8_t value = nes->ram[addr];
             nes->A = value;
             nes->X = value;
@@ -1195,7 +1195,7 @@ void nes_emulation_cycle(CPU *nes) {
         }
         
         case 0xA9: { // LDA immediate
-            printf("LDA #$%02X at PC=0x%04X\n", nes->prg_rom[nes->PC], nes->PC - 1);
+            printf("LDA #$%02X at PC=0x%04X\n", nes_read(nes, nes->PC), nes->PC - 1);
             nes->A = nes_read(nes, nes->PC);
             nes->PC++;
 
@@ -1206,7 +1206,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xAD: {
             printf("LDA at PC=0x%04X\n", nes->PC - 1);
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->A = nes_read(nes, addr);
             nes->PC += 2;
             break;
@@ -1214,7 +1214,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xAF: {
             printf("LAX absolute at PC=0x%04X\n", nes->PC - 1);
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
             uint8_t value = nes_read(nes, addr);
             nes->A = value;
@@ -1235,7 +1235,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xB3: {
             printf("LAX (indirect),Y at PC=0x%04X\n", nes->PC - 1);
-            uint8_t zp = nes->prg_rom[nes->PC++];
+            uint8_t zp = nes_read(nes, nes->PC++);
             uint16_t base = nes->ram[zp] | (nes->ram[(zp + 1) & 0xFF] << 8);
             uint16_t addr = base + nes->Y;
             uint8_t value = nes_read(nes, addr);
@@ -1249,7 +1249,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xB5: { // LDA zeropage,X
             printf("LDA zeropage,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t base = nes->prg_rom[nes->PC++];
+            uint8_t base = nes_read(nes, nes->PC++);
             uint8_t addr = (base + nes->X) & 0xFF;
             nes->A = nes->ram[addr];
 
@@ -1261,7 +1261,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xB7: {
             printf("LAX zeropage,Y at PC=0x%04X\n", nes->PC - 1);
-            uint8_t base = nes->prg_rom[nes->PC++];
+            uint8_t base = nes_read(nes, nes->PC++);
             uint8_t addr = (base + nes->Y) & 0xFF;
             uint8_t value = nes->ram[addr];
             nes->A = value;
@@ -1280,7 +1280,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xB9: { // LDA absolute,Y
             printf("LDA absolute,Y at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
             
             uint16_t effective_addr = addr + nes->Y;
@@ -1295,7 +1295,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xBC: { // absolute, X
             printf("LDY absolute,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint16_t effective_addr = addr + nes->X;
@@ -1311,7 +1311,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xBD: { // LDA absolute,X
             printf("LDA absolute,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
             
             uint16_t effective_addr = addr + nes->X;
@@ -1325,7 +1325,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xBF: {
             printf("LAX absolute,Y at PC=0x%04X\n", nes->PC - 1);
-            uint16_t base = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t base = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
             uint16_t addr = base + nes->Y;
             uint8_t value = nes_read(nes, addr);
@@ -1339,7 +1339,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xC0: { // CPY immediate
             printf("CPY immediate at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t value = nes->prg_rom[nes->PC++];
+            uint8_t value = nes_read(nes, nes->PC++);
             uint8_t result = nes->Y - value;
 
             nes->P &= ~(FLAG_Z | FLAG_N | FLAG_C);
@@ -1353,7 +1353,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xC3: {
             printf("DCP at PC=0x%04X\n", nes->PC - 1);
-            uint8_t zp = nes->prg_rom[nes->PC++];
+            uint8_t zp = nes_read(nes, nes->PC++);
             uint16_t addr = nes->ram[(zp + nes->X) & 0xFF] | (nes->ram[(zp + nes->X + 1) & 0xFF] << 8);
             nes->ram[addr] -= 1;
             uint8_t value = nes->ram[addr];
@@ -1383,7 +1383,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xC6: { // DEC zeropage
             printf("DEC zeropage at PC=0x%04X\n", nes->PC - 1);
-            uint8_t addr = nes->prg_rom[nes->PC]; // 1 bytes
+            uint8_t addr = nes_read(nes, nes->PC); // 1 bytes
             nes->PC += 1;
 
             nes->ram[addr] -= 1;
@@ -1398,7 +1398,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xC7: { // DCP zeropage
             printf("DCP zeropage at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t addr = nes->prg_rom[nes->PC++];
+            uint8_t addr = nes_read(nes, nes->PC++);
             nes->ram[addr] -= 1;
             uint8_t value = nes->ram[addr];
 
@@ -1420,7 +1420,7 @@ void nes_emulation_cycle(CPU *nes) {
         }
 
         case 0xC9: { // CMP immediate
-            uint8_t value = nes->prg_rom[nes->PC]; // get immediat operande
+            uint8_t value = nes_read(nes, nes->PC); // get immediat operande
             nes->PC++;
 
             uint16_t result = nes->A - value;
@@ -1457,7 +1457,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xCB: { // SBX immediate
             printf("SBX #oper at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t operand = nes->prg_rom[nes->PC++];
+            uint8_t operand = nes_read(nes, nes->PC++);
 
             uint16_t result = (nes->A & nes->X) - operand;
             nes->X = result & 0xFF;
@@ -1473,7 +1473,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xCC: { // CPY absolute
             printf("CPY absolute at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint8_t value = nes_read(nes, addr);
@@ -1491,7 +1491,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xCE: { // DEC absolute
             printf("DEC absolute at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             nes->ram[addr] -= 1;
@@ -1507,7 +1507,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xE6: {
             printf("INC at PC=0x%04X\n", nes->PC - 1);
-            uint8_t addr = nes->prg_rom[nes->PC];
+            uint8_t addr = nes_read(nes, nes->PC);
             nes->ram[addr] += 1;
             uint8_t value = nes->ram[addr];
             nes->P &= ~(FLAG_Z | FLAG_N);
@@ -1532,7 +1532,7 @@ void nes_emulation_cycle(CPU *nes) {
         
         case 0xEE: {
             printf("INC (absolute) at PC=0x%04X\n", nes->PC - 1);
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             uint8_t value = ++nes->ram[addr];
             nes->P &= ~(FLAG_Z | FLAG_N);
             if (value == 0) nes->P |= FLAG_Z;  // Zero
@@ -1581,7 +1581,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xDC: { // NOP absolute,X (illegal)
             printf("NOP absolute,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             addr += nes->X;
@@ -1622,7 +1622,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xF1: { // SBC ($nn),Y
             printf("SBC ($nn),Y at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t zp_addr = nes->prg_rom[nes->PC++];
+            uint8_t zp_addr = nes_read(nes, nes->PC++);
 
             uint16_t base = nes->ram[zp_addr] | (nes->ram[(zp_addr + 1) & 0xFF] << 8);
             uint16_t addr = base + nes->Y;
@@ -1659,7 +1659,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xF5: { // SBC zeropage,X
             printf("SBC zeropage,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t zp_addr = nes->prg_rom[nes->PC++];
+            uint8_t zp_addr = nes_read(nes, nes->PC++);
             uint8_t addr = (zp_addr + nes->X) & 0xFF;
             uint8_t value = nes->ram[addr];
 
@@ -1694,7 +1694,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xF6: {  
             printf("INC zeropage,X at PC=0x%04X\n", nes->PC - 1);
-            uint8_t base = nes->prg_rom[nes->PC++];
+            uint8_t base = nes_read(nes, nes->PC++);
             uint8_t addr = (base + nes->X) & 0xFF;
 
             nes->ram[addr] += 1;
@@ -1718,7 +1718,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xFC: { // NOP absolute,X (illegal)
             printf("NOP absolute,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             addr += nes->X;
@@ -1729,7 +1729,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xFE: {  
             printf("INC absolute,X at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t base = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t base = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
             uint16_t addr = base + nes->X;
 
@@ -1748,7 +1748,7 @@ void nes_emulation_cycle(CPU *nes) {
             printf("ISC (zeropage,X) at PC=0x%04X\n", nes->PC - 1);
 
             
-            uint8_t base = nes->prg_rom[nes->PC++];
+            uint8_t base = nes_read(nes, nes->PC++);
             uint8_t addr = (base + nes->X) & 0xFF;
 
             // INC M
