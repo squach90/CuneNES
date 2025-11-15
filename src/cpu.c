@@ -46,6 +46,7 @@ Relative (branch): int8_t offset = nes->ram[nes->PC++];
 #include <string.h>
 #include <time.h>
 #include "../includes/cpu.h"
+#include "../includes/ppu.h"
 
 #define FLAG_C 0x01
 #define FLAG_Z 0x02
@@ -56,6 +57,8 @@ Relative (branch): int8_t offset = nes->ram[nes->PC++];
 #define FLAG_V 0x40
 #define FLAG_N 0x80
 
+#define DEBUG_CPU 0
+
 
 const char* opcodeTable[256] = {
     "BRK", "ORA", "???", "???", "???", "ORA", "ASL", "???", "PHP", "ORA", "ASL", "???", "???", "ORA", "ASL", "???",
@@ -64,17 +67,150 @@ const char* opcodeTable[256] = {
 
 void nes_init(CPU *nes) {
     memset(nes, 0, sizeof(CPU));
-
-    nes->SP = 0xFD;
-
-    memset(nes->gfx, 0, sizeof(nes->gfx)); // - Clear framebuffer
-
+    nes->SP = 0xFD;  // Initialiser le pointeur de pile à 0xFD
+    memset(nes->gfx, 0, sizeof(nes->gfx));
     nes->draw_flag = false;
-
     srand((unsigned) time(NULL));
 }
 
-int load_program(CPU *nes, const char *filename) {
+void nes_write(CPU *nes, uint16_t addr, uint8_t value) {
+    // $0000-$07FF : RAM
+    if (addr < 0x0800) {
+        nes->ram[addr] = value;
+    }
+    // $0800-$1FFF : Miroirs de la RAM
+    else if (addr < 0x2000) {
+        nes->ram[addr & 0x07FF] = value;
+    }
+    // $2000-$3FFF : Registres PPU
+    else if (addr >= 0x2000 && addr < 0x4000) {
+        uint16_t reg = 0x2000 + (addr & 0x0007);
+        
+        switch (reg) {
+            case 0x2000: // PPUCTRL
+                printf("📝 Write PPUCTRL = 0x%02X\n", value);
+                nes->ppu->regs.PPUCTRL = value;
+                nes->ppu->t = (nes->ppu->t & 0xF3FF) | ((value & 0x03) << 10);
+                break;
+                
+            case 0x2001: // PPUMASK
+                printf("📝 Write PPUMASK = 0x%02X\n", value);
+                nes->ppu->regs.PPUMASK = value;
+                break;
+                
+            case 0x2006: // PPUADDR
+                if (nes->ppu->w == 0) {
+                    nes->ppu->t = (nes->ppu->t & 0x80FF) | ((value & 0x3F) << 8);
+                    nes->ppu->w = 1;
+                    printf("📝 Write PPUADDR (high) = 0x%02X, t=0x%04X\n", value, nes->ppu->t);
+                } else {
+                    nes->ppu->t = (nes->ppu->t & 0xFF00) | value;
+                    nes->ppu->v = nes->ppu->t;
+                    nes->ppu->w = 0;
+                    printf("📝 Write PPUADDR (low) = 0x%02X, v=0x%04X\n", value, nes->ppu->v);
+                }
+                break;
+                
+            case 0x2007: // PPUDATA
+                if (nes->ppu->v >= 0x2000 && nes->ppu->v < 0x2400) {
+                    static int last_value = -1;
+                    static int same_count = 0;
+                    
+                    if (value == last_value) {
+                        same_count++;
+                    } else {
+                        if (same_count > 10) {
+                            printf("📝 Wrote 0x%02X %d times\n", last_value, same_count);
+                        }
+                        last_value = value;
+                        same_count = 1;
+                    }
+                    
+                    // Afficher quand le jeu écrit une valeur différente
+                    if (value != 0x24) {
+                        printf("📝 Game writes NEW tile 0x%02X at 0x%04X\n", value, nes->ppu->v);
+                    }
+                }
+                
+                ppu_write(nes->ppu, nes->ppu->v, value);
+                
+                if (nes->ppu->regs.PPUCTRL & 0x04) {
+                    nes->ppu->v += 32;
+                } else {
+                    nes->ppu->v += 1;
+                }
+                break;
+                
+            case 0x2003: // OAMADDR
+            case 0x2004: // OAMDATA
+            case 0x2005: // PPUSCROLL
+            default:
+                // Autres registres...
+                break;
+        }
+    }
+    else if (addr >= 0x8000) {
+        // ROM is read-only
+    }
+}
+
+
+uint8_t nes_read(CPU *nes, uint16_t addr) {
+    // $0000-$07FF : RAM (2KB)
+    if (addr < 0x0800) {
+        return nes->ram[addr];
+    }
+    // $0800-$1FFF : Miroirs de la RAM
+    else if (addr < 0x2000) {
+        return nes->ram[addr & 0x07FF];
+    }
+    // $2000-$3FFF : Registres PPU
+    else if (addr >= 0x2000 && addr < 0x4000) {
+        uint16_t reg = 0x2000 + (addr & 0x0007);
+        
+        switch (reg) {
+            case 0x2002: { // PPUSTATUS
+                uint8_t status = nes->ppu->status;
+                nes->ppu->status &= 0x7F;  // Clear VBlank flag après lecture
+                nes->ppu->w = 0;            // Reset latch
+                return status;
+            }
+                
+            case 0x2004: // OAMDATA
+                return nes->ppu->oam[nes->ppu->regs.OAMADDR];
+                
+            case 0x2007: // PPUDATA
+                {
+                    uint8_t data = ppu_read(nes->ppu, nes->ppu->v);
+                    
+                    // Auto-increment
+                    if (nes->ppu->regs.PPUCTRL & 0x04) {
+                        nes->ppu->v += 32;
+                    } else {
+                        nes->ppu->v += 1;
+                    }
+                    
+                    return data;
+                }
+                
+            default:
+                return 0;
+        }
+    }
+    // $4000-$4017 : APU et I/O
+    else if (addr < 0x4020) {
+        return 0;  // TODO
+    }
+    // $8000-$FFFF : PRG-ROM
+    else if (addr >= 0x8000) {
+        return nes->prg_rom[addr & 0x3FFF];
+    }
+    
+    return 0;
+}
+
+
+int load_program(CPU *nes, PPU *ppu, const char *filename) {
     FILE *file = fopen(filename, "rb");
     if (!file) {
         fprintf(stderr, "❌ Cannot open file %s\n", filename);
@@ -94,8 +230,11 @@ int load_program(CPU *nes, const char *filename) {
         return 1;
     }
 
-    uint8_t prg_size = header[4]; // nb of pgr bank 16KB each
-    uint8_t chr_size = header[5]; // mb of chr bank 8KB each
+    uint8_t prg_size = header[4]; // nb of prg bank 16KB each
+    uint8_t chr_size = header[5]; // nb of chr bank 8KB each
+
+    printf("PRG-ROM size: %d x 16KB\n", prg_size);
+    printf("CHR-ROM size: %d x 8KB\n", chr_size);
 
     if (prg_size * 16384 > sizeof(nes->prg_rom)) {
         fprintf(stderr, "❌ PRG-ROM too large\n");
@@ -103,36 +242,118 @@ int load_program(CPU *nes, const char *filename) {
         return 1;
     }
 
+    // Lire PRG-ROM
     if (fread(nes->prg_rom, 1, prg_size * 16384, file) != prg_size * 16384) {
         fprintf(stderr, "❌ Failed to read PRG-ROM\n");
         fclose(file);
         return 1;
     }
+    printf("✅ PRG-ROM loaded (%d KB)\n", prg_size * 16);
 
+    // Lire CHR-ROM
     if (chr_size > 0) {
         if (fread(nes->chr_rom, 1, chr_size * 8192, file) != chr_size * 8192) {
             fprintf(stderr, "❌ Failed to read CHR-ROM\n");
             fclose(file);
             return 1;
         }
+        
+        // Copier CHR-ROM dans la VRAM du PPU (pattern tables $0000-$1FFF)
+        memcpy(ppu->vram, nes->chr_rom, chr_size * 8192);
+        printf("✅ CHR-ROM loaded (%d KB)\n", chr_size * 8);
+        
+        // Debug : afficher les premières bytes du CHR-ROM
+        printf("CHR-ROM first 16 bytes (tile 0): ");
+        for (int i = 0; i < 16; i++) {
+            printf("%02X ", ppu->vram[i]);
+        }
+        printf("\n");
+        
+        // Afficher aussi la tile 1 pour comparaison
+        printf("CHR-ROM bytes 16-31 (tile 1): ");
+        for (int i = 16; i < 32; i++) {
+            printf("%02X ", ppu->vram[i]);
+        }
+        printf("\n");
+        
+        // Vérifier si toutes les tiles sont identiques (CHR-ROM vide)
+        bool all_zero = true;
+        for (int i = 0; i < 256; i++) {
+            if (ppu->vram[i] != 0) {
+                all_zero = false;
+                break;
+            }
+        }
+        if (all_zero) {
+            printf("⚠️ WARNING: CHR-ROM appears to be all zeros!\n");
+        }
+    } else {
+        printf("⚠️ No CHR-ROM (using CHR-RAM)\n");
     }
 
     fclose(file);
 
-    // Init PC reset vector
-    uint16_t reset_vector = nes->prg_rom[0x3FFC] | (nes->prg_rom[0x3FFD] << 8);
+    // Init PC avec le reset vector
+    uint16_t reset_vector;
+    
+    if (prg_size == 1) {
+        // ROM 16KB : mirroring
+        reset_vector = nes->prg_rom[0x3FFC] | (nes->prg_rom[0x3FFD] << 8);
+    } else {
+        // ROM 32KB
+        reset_vector = nes->prg_rom[0x7FFC] | (nes->prg_rom[0x7FFD] << 8);
+    }
+    
+    printf("Reset vector: 0x%04X\n", reset_vector);
     nes->PC = reset_vector;
+    
+    printf("First 3 opcodes: %02X %02X %02X\n", 
+           nes_read(nes, reset_vector),
+           nes_read(nes, reset_vector + 1),
+           nes_read(nes, reset_vector + 2));
+    
+    printf("\nROM content at reset vector:\n");
+    for (int i = 0; i < 16; i++) {
+        printf("0x%04X: 0x%02X\n", reset_vector + i, nes_read(nes, reset_vector + i));
+    }
 
-    printf("✅ ROM loaded (%d KB PRG, %d KB CHR). PC set to 0x%04X\n",
-           prg_size * 16, chr_size * 8, nes->PC);
+    // // ===== REMPLISSAGE DE TEST DE LA NAMETABLE =====
+    // printf("\n🔧 Filling nametable with test pattern...\n");
+    
+    // // Vérifier que la zone nametable est vide avant remplissage
+    // printf("Nametable BEFORE fill (first 16): ");
+    // for (int i = 0; i < 16; i++) {
+    //     printf("%02X ", ppu->vram[0x2000 + i]);
+    // }
+    // printf("\n");
+    
+    // Remplir avec un motif de test plus visible
+    // for (int y = 0; y < 30; y++) {
+    //     for (int x = 0; x < 32; x++) {
+    //         uint16_t addr = 0x2000 + y * 32 + x;
+            
+    //         // Utiliser des tiles espacées pour avoir plus de variété
+    //         // Cela augmente les chances d'avoir des tiles visibles différentes
+    //         uint8_t tile_index = ((y * 8) + (x * 4)) % 256;
+            
+    //         ppu->vram[addr] = tile_index;
+    //     }
+    // }
+    
+    // // Vérifier que le remplissage a fonctionné
+    // printf("Nametable AFTER fill (first 16): ");
+    // for (int i = 0; i < 16; i++) {
+    //     printf("%02X ", ppu->vram[0x2000 + i]);
+    // }
+    // printf("\n");
+    
+    // printf("Nametable at position [10,5] (should be != 0): 0x%02X\n", 
+    //        ppu->vram[0x2000 + 5 * 32 + 10]);
+    
+    // printf("✅ Test nametable filled\n\n");
 
-    return 0;
-}
-
-uint8_t nes_read(CPU *nes, uint16_t addr) {
-    if (addr < 0x0800) return nes->ram[addr];
-    else if (addr >= 0x8000) return nes->prg_rom[addr - 0x8000]; // PRG-ROM
-    // else : add PPU, IO etc
+    printf("✅ ROM loaded successfully. PC set to 0x%04X\n", nes->PC);
+    
     return 0;
 }
 
@@ -186,8 +407,8 @@ void update_NZ_flags(CPU *nes, uint8_t value) {
 
 
 void nes_emulation_cycle(CPU *nes) {
-    uint8_t opcode = nes->prg_rom[nes->PC++];
-    const char* instruction = opcodeTable[opcode];
+    uint8_t opcode = nes_read(nes, nes->PC++);
+    // const char* instruction = opcodeTable[opcode];
 
     switch (opcode) {
         case 0x00: // BRK - Force Interrupt
@@ -305,7 +526,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x0D: { // ORA absolute
             printf("ORA absolute at PC=0x%04X\n", nes->PC - 1);
 
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
 
             uint8_t value = nes_read(nes, addr);
@@ -398,6 +619,22 @@ void nes_emulation_cycle(CPU *nes) {
 
             break;
         }
+
+        case 0x17: { // ORA (Indirect),Y
+            printf("ORA (Indirect),Y at PC=0x%04X\n", nes->PC - 1);
+            uint8_t zp = nes->prg_rom[nes->PC]; // adresse zero page
+            nes->PC += 1;
+
+            uint16_t base = nes_read(nes, zp) | (nes_read(nes, (uint8_t)(zp + 1)) << 8);
+            uint16_t addr = base + nes->Y;
+
+            uint8_t value = nes_read(nes, addr);
+            nes->A |= value;
+
+            update_NZ_flags(nes, nes->A); // met à jour les flags N et Z
+            break;
+        }
+
         
         case 0x18:
             printf("CLC at PC=0x%04X\n", nes->PC - 1);
@@ -444,13 +681,11 @@ void nes_emulation_cycle(CPU *nes) {
         }
 
         
-        case 0x20: {
-            printf("JSR at PC=0x%04X\n", nes->PC - 1);
+        case 0x20: { // JSR absolute
             uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
             uint16_t return_addr = nes->PC + 1;
-            nes->stack[nes->SP--] = (return_addr >> 8) & 0xFF; // high
-            nes->stack[nes->SP--] = return_addr & 0xFF; // low
-
+            nes->ram[0x0100 + nes->SP--] = (return_addr >> 8) & 0xFF; // Pousser l'adresse haute
+            nes->ram[0x0100 + nes->SP--] = return_addr & 0xFF;        // Pousser l'adresse basse
             nes->PC = addr;
             break;
         }
@@ -541,7 +776,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x29: { // AND immediate
             printf("AND immediate at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t value = nes->ram[nes->PC++];
+            uint8_t value = nes_read(nes, nes->PC++);
             nes->A &= value;
 
             nes->P &= ~(FLAG_N | FLAG_Z);
@@ -694,7 +929,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0x4C: { // JMP absolute
             uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
-            printf("JMP to 0x%04X at PC=0x%04X\n", addr, nes->PC - 1);
+            printf("JMP to 0x%04X at PC=0x%04X\n", addr, nes->PC);
             nes->PC = addr;
             break;
         }
@@ -703,8 +938,8 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x60: {
             printf("RTS at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t pcl = nes->stack[++nes->SP];  // pop low byte
-            uint8_t pch = nes->stack[++nes->SP];  // pop high byte
+            uint8_t pcl = nes->ram[0x0100 + ++nes->SP];  // pop low byte
+            uint8_t pch = nes->ram[0x0100 + ++nes->SP];  // pop high byte
 
             nes->PC = ((uint16_t)pch << 8) | pcl;
             nes->PC++;
@@ -740,7 +975,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x69: { // ADC immediate
             printf("ADC at PC=0x%04X\n", nes->PC - 1);
 
-            uint8_t value = nes->prg_rom[nes->PC];
+            uint8_t value = nes_read(nes, nes->PC); 
             uint16_t sum = nes->A + value + (nes->P & FLAG_C);
 
             nes->P &= ~(FLAG_C | FLAG_Z | FLAG_V | FLAG_N); // Clear C, Z, V, N
@@ -813,10 +1048,10 @@ void nes_emulation_cycle(CPU *nes) {
             nes->P |= FLAG_I;
             break;
 
-        case 0x8D: {
-            printf("STA at PC=0x%04X\n", nes->PC - 1);
-            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
-            nes->ram[addr] = nes->A;
+        case 0x8D: {  // STA absolute
+            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
+            printf("STA: Writing A=0x%02X to addr=0x%04X\n", nes->A, addr);
+            nes_write(nes, addr, nes->A);
             nes->PC += 2;
             break;
         }
@@ -824,7 +1059,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x8E: {
             printf("STX at PC=0x%04X\n", nes->PC - 1);
             uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
-            nes->ram[addr] = nes->X;
+            nes_write(nes, addr, nes->X);
             nes->PC += 2;
             break;
         }
@@ -844,7 +1079,7 @@ void nes_emulation_cycle(CPU *nes) {
             printf("STA zeropage,X at PC=0x%04X\n", nes->PC - 1);
             uint8_t zp_addr = nes->prg_rom[nes->PC++];
             uint8_t addr = (zp_addr + nes->X) & 0xFF;
-            nes->ram[addr] = nes->A;
+            nes_write(nes, addr, nes->A);
             break;
         }
 
@@ -863,7 +1098,7 @@ void nes_emulation_cycle(CPU *nes) {
         case 0x9D: {
             printf("STA at PC=0x%04X\n", nes->PC - 1);
             uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
-            nes->ram[addr] = nes->A;
+            nes_write(nes, addr, nes->A);
             nes->PC += 2;
             break;
         }
@@ -886,7 +1121,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xA0: {
             printf("LDY #$%02X at PC=0x%04X\n", nes->ram[nes->PC], nes->PC);
-            nes->Y = nes->ram[nes->PC++];
+            nes->Y = nes_read(nes, nes->PC++);
             
             nes->P &= ~(FLAG_N | FLAG_Z);
             if (nes->Y == 0) nes->P |= FLAG_Z;
@@ -915,7 +1150,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xA2: { // LDX immediate
             printf("LDX immediate at PC=0x%04X\n", nes->PC - 1);
-            nes->X = nes->prg_rom[nes->PC]; // take next byte
+            nes->X = nes_read(nes, nes->PC);
             nes->PC += 1;
             
             nes->P &= ~(FLAG_Z | FLAG_N); // Clear Z & N
@@ -961,7 +1196,7 @@ void nes_emulation_cycle(CPU *nes) {
         
         case 0xA9: { // LDA immediate
             printf("LDA #$%02X at PC=0x%04X\n", nes->prg_rom[nes->PC], nes->PC - 1);
-            nes->A = nes->prg_rom[nes->PC];
+            nes->A = nes_read(nes, nes->PC);
             nes->PC++;
 
             update_NZ_flags(nes, nes->A);
@@ -1033,6 +1268,12 @@ void nes_emulation_cycle(CPU *nes) {
             nes->X = value;
 
             update_NZ_flags(nes, nes->A);
+            break;
+        }
+
+        case 0xB8: { // CLV
+            printf("CLV at PC=0x%04X\n", nes->PC - 1);
+            nes->P &= ~0x40; // Clear Overflow flag (V = bit 6)
             break;
         }
 
@@ -1168,6 +1409,13 @@ void nes_emulation_cycle(CPU *nes) {
             if (nes->A >= value) nes->P |= FLAG_C; else nes->P &= ~FLAG_C;
             if (result & 0x80) nes->P |= FLAG_N; else nes->P &= ~FLAG_N;
 
+            break;
+        }
+
+        case 0xC8: { // INY
+            printf("INY at PC=0x%04X\n", nes->PC - 1);
+            nes->Y += 1;
+            update_NZ_flags(nes, nes->Y); // Met à jour les flags N et Z
             break;
         }
 

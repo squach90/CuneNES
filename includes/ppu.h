@@ -34,7 +34,25 @@ typedef struct {
     uint8_t oam[OAM_SIZE];
 
     uint8_t screen[SCREEN_HEIGHT][SCREEN_WIDTH]; // Framebuffer
+    int cycle;
+    int scanline;
+    uint16_t v;
+    uint16_t t;
+    uint8_t x;
+    uint8_t w;
+    
+    uint8_t status;          // PPU status register ($2002)
+    uint8_t mask;            // PPU mask ($2001)
+    uint8_t control;         // PPU control ($2000)
+    
+    bool nmi;                // Flag NMI à déclencher à la fin du scanline
     bool frame_complete; // indicate the frame can be "print"
 } PPU;
+
+void ppu_init(PPU *ppu);
+void ppu_tick(PPU* ppu);
+uint8_t ppu_read(PPU *ppu, uint16_t addr);
+void ppu_write(PPU *ppu, uint16_t addr, uint8_t value);
+void ppu_render_tile(PPU* ppu, int tile_x, int tile_y);
 
 #endif

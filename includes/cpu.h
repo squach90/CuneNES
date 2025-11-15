@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "ppu.h"
 
 typedef struct {
     // == Memory ==
@@ -23,13 +24,17 @@ typedef struct {
     uint8_t gfx[256 * 240]; // Framebuffer
 
     uint8_t key[8]; // 8 buttons : A, B, Select, Start, Up, Down, Left, Right
-
+    
     bool draw_flag;
+    PPU *ppu;
 } CPU;
 
 void nes_init(CPU *nes);
-int load_program(CPU *nes, const char *filename);
+int load_program(CPU *nes, PPU *ppu, const char *filename);
+void nes_write(CPU *nes, uint16_t addr, uint8_t value);
 void nes_emulation_cycle(CPU *nes);
 
+// Ajouter cette ligne manquante
+uint8_t nes_read(CPU *nes, uint16_t addr);
 
 #endif
