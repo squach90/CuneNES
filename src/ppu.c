@@ -11,10 +11,10 @@ void ppu_init(PPU *ppu) {
     ppu->w = 0;
     ppu->status = 0xA0;
     
-    ppu->palette[0] = 0x0F;  // Noir (transparent)
-    ppu->palette[1] = 0x16;  // Rouge
-    ppu->palette[2] = 0x27;  // Vert
-    ppu->palette[3] = 0x30;  // Blanc
+    ppu->palette[0] = 0x0F;
+    ppu->palette[1] = 0x16;
+    ppu->palette[2] = 0x27;
+    ppu->palette[3] = 0x30;
     
     printf("✅ PPU initialized\n");
 }
@@ -26,13 +26,11 @@ void ppu_tick(PPU* ppu) {
         ppu->cycle = 0;
         ppu->scanline++;
 
-        // Début du VBlank à la scanline 241
         if (ppu->scanline == 241) {
             ppu->status |= 0x80;  // Set bit 7 (VBlank)
             ppu->frame_complete = true;
         }
 
-        // Fin du frame, retour à 0
         if (ppu->scanline >= 262) {
             ppu->scanline = 0;
             ppu->status &= 0x7F;  // Clear bit 7
@@ -46,10 +44,8 @@ uint8_t ppu_read(PPU *ppu, uint16_t addr) {
     if (addr >= 0x3F00) {
         return ppu->palette[addr & 0x1F];
     } else if (addr >= 0x2000 && addr < 0x3000) {
-        // Nametable avec mirroring horizontal
         return ppu->vram[0x2000 + (addr & 0x03FF)];
     } else {
-        // Pattern table (CHR-ROM)
         return ppu->vram[addr & 0x1FFF];
     }
 }
@@ -65,19 +61,11 @@ void ppu_write(PPU *ppu, uint16_t addr, uint8_t value) {
 }
 
 void ppu_render_tile(PPU* ppu, int tile_x, int tile_y) {
-    // Lire l'index de la tuile depuis la nametable
     uint16_t nametable_addr = 0x2000 + tile_y * 32 + tile_x;
     uint8_t tile_index = ppu->vram[nametable_addr];
-    
-    // // DEBUG : Afficher les premiers tiles
-    // if (tile_y == 0 && tile_x < 10) {
-    //     printf("Tile[%d,%d] = 0x%02X at addr 0x%04X\n", tile_x, tile_y, tile_index, nametable_addr);
-    // }
-    
-    // Calculer l'adresse dans la pattern table
+
     uint16_t pattern_table_addr = tile_index * 16;
 
-    // Rendu de la tuile (8x8 pixels)
     for (int y = 0; y < 8; y++) {
         uint8_t byte1 = ppu->vram[pattern_table_addr + y];
         uint8_t byte2 = ppu->vram[pattern_table_addr + y + 8];

@@ -45,7 +45,7 @@ typedef struct {
     uint8_t mask;            // PPU mask ($2001)
     uint8_t control;         // PPU control ($2000)
     
-    bool nmi;                // Flag NMI à déclencher à la fin du scanline
+    bool nmi;
     bool frame_complete; // indicate the frame can be "print"
 } PPU;
 

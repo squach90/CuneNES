@@ -34,7 +34,6 @@ int load_program(CPU *nes, PPU *ppu, const char *filename);
 void nes_write(CPU *nes, uint16_t addr, uint8_t value);
 void nes_emulation_cycle(CPU *nes);
 
-// Ajouter cette ligne manquante
 uint8_t nes_read(CPU *nes, uint16_t addr);
 
 #endif

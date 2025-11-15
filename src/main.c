@@ -35,14 +35,12 @@ int main(int argc, char **argv) {
     }
     printf("\n");
     
-    // Afficher le contenu du CHR-ROM pour debug
     printf("CHR-ROM sample: ");
     for (int i = 0; i < 16; i++) {
         printf("%02X ", ppu.vram[i]);
     }
     printf("\n");
     
-    // Initialise SDL et passe le PPU à display
     if (display_init(&ppu) != 0) {
         fprintf(stderr, "❌ Failed to initialize display\n");
         return 1;
@@ -62,38 +60,31 @@ int main(int argc, char **argv) {
         }
 
         for (int i = 0; i < cpu_cycles_per_frame; i++) {
-            // 1 cycle CPU
             nes_emulation_cycle(&nes);
 
-            // 3 cycles PPU par cycle CPU
             for (int j = 0; j < 3; j++) {
                 ppu_tick(&ppu);
             }
             
-            // Si une frame est complète, on rend l'écran
             if (ppu.frame_complete) {
-                // Rendre toutes les tuiles
                 for (int ty = 0; ty < 30; ty++) {
                     for (int tx = 0; tx < 32; tx++) {
                         ppu_render_tile(&ppu, tx, ty);
                     }
                 }
                 
-                // Afficher à l'écran
                 display_loop(&ppu);
                 
                 ppu.frame_complete = false;
                 frame_count++;
                 
-                // Debug : afficher toutes les 60 frames
                 if (frame_count % 60 == 0) {
                     printf("Frame %d rendered\n", frame_count);
                 }
                 
-                // Limiter à ~60 FPS
                 SDL_Delay(16);
                 
-                break;  // Sortir de la boucle pour traiter les événements SDL
+                break;
             }
         }
 

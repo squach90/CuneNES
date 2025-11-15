@@ -6,7 +6,6 @@
 
 #define WINDOW_SCALE 3
 
-// Palette de couleurs NES
 uint32_t nes_palette[64] = {
     0x666666, 0x002A88, 0x1412A7, 0x3B00A4,
     0x5C007E, 0x6E0040, 0x6C0700, 0x561D00,
