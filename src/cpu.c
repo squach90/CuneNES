@@ -46,7 +46,6 @@ Relative (branch): int8_t offset = nes->ram[nes->PC++];
 #include <string.h>
 #include <time.h>
 #include "../includes/cpu.h"
-#include "../includes/ppu.h"
 
 #define FLAG_C 0x01
 #define FLAG_Z 0x02
@@ -75,73 +74,7 @@ void nes_write(CPU *nes, uint16_t addr, uint8_t value) {
     // $0800-$1FFF : Miroirs de la RAM
     else if (addr < 0x2000) {
         nes->ram[addr & 0x07FF] = value;
-    }
-    // $2000-$3FFF : Registres PPU
-    else if (addr >= 0x2000 && addr < 0x4000) {
-        uint16_t reg = 0x2000 + (addr & 0x0007);
-        
-        switch (reg) {
-            case 0x2000: // PPUCTRL
-                printf("📝 Write PPUCTRL = 0x%02X\n", value);
-                nes->ppu->regs.PPUCTRL = value;
-                nes->ppu->t = (nes->ppu->t & 0xF3FF) | ((value & 0x03) << 10);
-                break;
-                
-            case 0x2001: // PPUMASK
-                printf("📝 Write PPUMASK = 0x%02X\n", value);
-                nes->ppu->regs.PPUMASK = value;
-                break;
-                
-            case 0x2006: // PPUADDR
-                if (nes->ppu->w == 0) {
-                    nes->ppu->t = (nes->ppu->t & 0x80FF) | ((value & 0x3F) << 8);
-                    nes->ppu->w = 1;
-                    printf("📝 Write PPUADDR (high) = 0x%02X, t=0x%04X\n", value, nes->ppu->t);
-                } else {
-                    nes->ppu->t = (nes->ppu->t & 0xFF00) | value;
-                    nes->ppu->v = nes->ppu->t;
-                    nes->ppu->w = 0;
-                    printf("📝 Write PPUADDR (low) = 0x%02X, v=0x%04X\n", value, nes->ppu->v);
-                }
-                break;
-                
-            case 0x2007: // PPUDATA
-                if (nes->ppu->v >= 0x2000 && nes->ppu->v < 0x2400) {
-                    static int last_value = -1;
-                    static int same_count = 0;
-                    
-                    if (value == last_value) {
-                        same_count++;
-                    } else {
-                        if (same_count > 10) {
-                            printf("📝 Wrote 0x%02X %d times\n", last_value, same_count);
-                        }
-                        last_value = value;
-                        same_count = 1;
-                    }
-                    
-                    if (value != 0x24) {
-                        printf("📝 Game writes NEW tile 0x%02X at 0x%04X\n", value, nes->ppu->v);
-                    }
-                }
-                
-                ppu_write(nes->ppu, nes->ppu->v, value);
-                
-                if (nes->ppu->regs.PPUCTRL & 0x04) {
-                    nes->ppu->v += 32;
-                } else {
-                    nes->ppu->v += 1;
-                }
-                break;
-                
-            case 0x2003: // OAMADDR
-            case 0x2004: // OAMDATA
-            case 0x2005: // PPUSCROLL
-            default:
-                break;
-        }
-    }
-    else if (addr >= 0x8000) {
+    } else if (addr >= 0x8000) {
         // ROM is read-only
     }
 }
@@ -155,42 +88,7 @@ uint8_t nes_read(CPU *nes, uint16_t addr) {
     // $0800-$1FFF : Miroirs de la RAM
     else if (addr < 0x2000) {
         return nes->ram[addr & 0x07FF];
-    }
-    // $2000-$3FFF : Registres PPU
-    else if (addr >= 0x2000 && addr < 0x4000) {
-        uint16_t reg = 0x2000 + (addr & 0x0007);
-        
-        switch (reg) {
-            case 0x2002: { // PPUSTATUS
-                uint8_t status = nes->ppu->status;
-                nes->ppu->status &= 0x7F;  // Clear VBlank flag après lecture
-                nes->ppu->w = 0;            // Reset latch
-                return status;
-            }
-                
-            case 0x2004: // OAMDATA
-                return nes->ppu->oam[nes->ppu->regs.OAMADDR];
-                
-            case 0x2007: // PPUDATA
-                {
-                    uint8_t data = ppu_read(nes->ppu, nes->ppu->v);
-                    
-                    // Auto-increment
-                    if (nes->ppu->regs.PPUCTRL & 0x04) {
-                        nes->ppu->v += 32;
-                    } else {
-                        nes->ppu->v += 1;
-                    }
-                    
-                    return data;
-                }
-                
-            default:
-                return 0;
-        }
-    }
-    // $4000-$4017 : APU et I/O
-    else if (addr < 0x4020) {
+    } else if (addr < 0x4020) { // $4000-$4017 : APU et I/O
         return 0;  // TODO
     }
     // $8000-$FFFF : PRG-ROM
@@ -202,7 +100,7 @@ uint8_t nes_read(CPU *nes, uint16_t addr) {
 }
 
 
-int load_program(CPU *nes, PPU *ppu, const char *filename) {
+int load_program(CPU *nes, const char *filename) {
     FILE *file = fopen(filename, "rb");
     if (!file) {
         fprintf(stderr, "❌ Cannot open file %s\n", filename);
@@ -240,42 +138,6 @@ int load_program(CPU *nes, PPU *ppu, const char *filename) {
         return 1;
     }
     printf("✅ PRG-ROM loaded (%d KB)\n", prg_size * 16);
-
-    if (chr_size > 0) {
-        if (fread(nes->chr_rom, 1, chr_size * 8192, file) != chr_size * 8192) {
-            fprintf(stderr, "❌ Failed to read CHR-ROM\n");
-            fclose(file);
-            return 1;
-        }
-        
-        memcpy(ppu->vram, nes->chr_rom, chr_size * 8192);
-        printf("✅ CHR-ROM loaded (%d KB)\n", chr_size * 8);
-        
-        printf("CHR-ROM first 16 bytes (tile 0): ");
-        for (int i = 0; i < 16; i++) {
-            printf("%02X ", ppu->vram[i]);
-        }
-        printf("\n");
-        
-        printf("CHR-ROM bytes 16-31 (tile 1): ");
-        for (int i = 16; i < 32; i++) {
-            printf("%02X ", ppu->vram[i]);
-        }
-        printf("\n");
-        
-        bool all_zero = true;
-        for (int i = 0; i < 256; i++) {
-            if (ppu->vram[i] != 0) {
-                all_zero = false;
-                break;
-            }
-        }
-        if (all_zero) {
-            printf("⚠️ WARNING: CHR-ROM appears to be all zeros!\n");
-        }
-    } else {
-        printf("⚠️ No CHR-ROM (using CHR-RAM)\n");
-    }
 
     fclose(file);
 
