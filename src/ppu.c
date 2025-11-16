@@ -13,20 +13,28 @@ static const uint32_t NES_PALETTE[64] = {
     0xF8D878, 0xD8F878, 0xB8F8B8, 0xB8F8D8, 0x00FCFC, 0xF8D8F8, 0x000000, 0x000000
 };
 
+// === Init ===
+
 void ppu_init(PPU *ppu) {
-    memset(ppu, 0 sizeof(PPU));
-
-    ppu->scanline = -1; // Pre-render scanline
-    ppu->cycle = 0;
-    ppu->chr_ram_enabled = false;
-    ppu->addr_latch = false;
+    memset(ppu, 0, sizeof(PPU));
     
-    ppu->paletteMem[0] = 0x0F; // Black
-
+    ppu->scanline = -1;  // Pre-render scanline
+    ppu->cycle = 0;
+    ppu->addr_latch = false;
+    ppu->chr_ram_enabled = false;
+    
+    ppu->palette[0] = 0x0F;  // Black
+    
     ppu->draw_flag = false;
     ppu->frame_count = 0;
-    ppu->nmi_callback = false;
+    ppu->nmi_callback = NULL;
 
+    for (int y = 0; y < 240; y++) {
+        for (int x = 0; x < 256; x++) {
+            uint8_t color = ((x / 8) + (y / 8)) & 0x3F;
+            ppu->framebuffer[y * 256 + x] = color;
+        }
+    }
 }
 
 void ppu_reset(PPU *ppu) {
@@ -40,27 +48,26 @@ void ppu_reset(PPU *ppu) {
     ppu->data = 0;
     ppu->addr_latch = false;
     ppu->data_buffer = 0;
-    ppu->scanline = -1; // Pre-render scanline
+    ppu->scanline = -1;
     ppu->cycle = 0;
 }
 
-uint8_t ppu_read_memory(PPU *ppu, uint16_t addr) {
-    addr &= 0x3FFF; // Mirror (PPU mem -> max 16Kb)
+// === PPU memory access ===
 
+uint8_t ppu_read_memory(PPU *ppu, uint16_t addr) {
+    addr &= 0x3FFF;  // Mirror
+    
     // Pattern tables (0x0000-0x1FFF)
     if (addr < 0x2000) {
         return ppu->chr_rom[addr];
     }
-
     // Nametables (0x2000-0x2FFF)
     else if (addr < 0x3F00) {
         return ppu->vram[addr & 0x07FF];
     }
-
     // Palette (0x3F00-0x3FFF)
     else {
         addr &= 0x1F;
-
         if (addr == 0x10) addr = 0x00;
         if (addr == 0x14) addr = 0x04;
         if (addr == 0x18) addr = 0x08;
@@ -69,90 +76,82 @@ uint8_t ppu_read_memory(PPU *ppu, uint16_t addr) {
     }
 }
 
-uint8_t ppu_write_memory(PPU *ppu, uint16_t addr, uint8_t value) {
-    addr &= 0x3FFF; // Mirror (PPU mem -> max 16Kb)
-
+void ppu_write_memory(PPU *ppu, uint16_t addr, uint8_t value) {
+    addr &= 0x3FFF;
+    
     // Pattern tables (0x0000-0x1FFF)
     if (addr < 0x2000) {
         if (ppu->chr_ram_enabled) {
-            ppu->chr_rom[addr] = value;
+            ppu->chr_rom[addr] = value;  // CHR-RAM is writable
         }
+        // CHR-ROM est read-only
     }
-
     // Nametables (0x2000-0x2FFF)
     else if (addr < 0x3F00) {
         ppu->vram[addr & 0x07FF] = value;
     }
-
     // Palette (0x3F00-0x3FFF)
     else {
         addr &= 0x1F;
-
         if (addr == 0x10) addr = 0x00;
         if (addr == 0x14) addr = 0x04;
         if (addr == 0x18) addr = 0x08;
         if (addr == 0x1C) addr = 0x0C;
-        ppu->palette[addr] = value & 0x3F; // Only 6 bits is use
-
+        ppu->palette[addr] = value & 0x3F;
     }
 }
 
-uint8_t ppu_write_register(PPU *ppu, uint16_t addr, uint8_t value) {
-    switch (addr & 0x2007) {
-    case 0x2000: // PPUCTRL
-        ppu->ctrl = value;
-        ppu->temp_addr = (ppu->temp_addr & 0xF3FF) | ((value & 0x03) << 10);
-        break;
-    
-    case 0x2001: // PPUMASK
-        ppu->mask = value;
-        break;
+// === PPU Registres ===
 
-    case 0x2003: // OAMADDR
-        ppu->oam_addr = value;
-        break;
-    
-    case 0x2004:  // OAMDATA
-        ppu->oam[ppu->oam_addr++] = value;
-        break;
-    
-    case 0x2005:  // PPUSCROLL
-        if (!ppu->addr_latch) {
-            // Premier write : X scroll
-            ppu->scroll_x = value;
-            ppu->fine_x = value & 0x07;
-            ppu->addr_latch = true;
-        } else {
-            // Deuxième write : Y scroll
-            ppu->scroll_y = value;
-            ppu->addr_latch = false;
-        }
-        break;
-        
-    case 0x2006:  // PPUADDR
-        if (!ppu->addr_latch) {
-            // Premier write : high byte
-            ppu->addr = (ppu->addr & 0x00FF) | ((value & 0x3F) << 8);
-            ppu->addr_latch = true;
-        } else {
-            // Deuxième write : low byte
-            ppu->addr = (ppu->addr & 0xFF00) | value;
-            ppu->addr_latch = false;
-        }
-        break;
-        
-    case 0x2007:  // PPUDATA
-        ppu_write_memory(ppu, ppu->addr, value);
-        // Incrémenter l'adresse
-        if (ppu->ctrl & PPUCTRL_INCREMENT) {
-            ppu->addr += 32;  // Mode vertical
-        } else {
-            ppu->addr += 1;   // Mode horizontal
-        }
-        break;
-    
-    default:
-        break;
+void ppu_write_register(PPU *ppu, uint16_t addr, uint8_t value) {
+    switch (addr & 0x2007) {
+        case 0x2000:  // PPUCTRL
+            ppu->ctrl = value;
+            // Bits 0-1 : base nametable address
+            ppu->temp_addr = (ppu->temp_addr & 0xF3FF) | ((value & 0x03) << 10);
+            break;
+            
+        case 0x2001:  // PPUMASK
+            ppu->mask = value;
+            break;
+            
+        case 0x2003:  // OAMADDR
+            ppu->oam_addr = value;
+            break;
+            
+        case 0x2004:  // OAMDATA
+            ppu->oam[ppu->oam_addr++] = value;
+            break;
+            
+        case 0x2005:  // PPUSCROLL
+            if (!ppu->addr_latch) {
+                ppu->scroll_x = value;
+                ppu->fine_x = value & 0x07;
+                ppu->addr_latch = true;
+            } else {
+                ppu->scroll_y = value;
+                ppu->addr_latch = false;
+            }
+            break;
+            
+        case 0x2006:  // PPUADDR
+            if (!ppu->addr_latch) {
+                ppu->addr = (ppu->addr & 0x00FF) | ((value & 0x3F) << 8); // High Byte
+                ppu->addr_latch = true;
+            } else {
+                ppu->addr = (ppu->addr & 0xFF00) | value; // Low Byte
+                ppu->addr_latch = false;
+            }
+            break;
+            
+        case 0x2007:  // PPUDATA
+            ppu_write_memory(ppu, ppu->addr, value);
+            if (ppu->ctrl & PPUCTRL_INCREMENT) {
+                ppu->addr += 32;
+            } else {
+                ppu->addr += 1;
+            }
+            break;
     }
 }
 
@@ -194,40 +193,53 @@ uint8_t ppu_read_register(PPU *ppu, uint16_t addr) {
     return value;
 }
 
-void ppu_step(PPU *ppu) {
-    ppu->cycle++; // Move of 1 pixel/dot
+// === PPU Cycle ===
 
-    if (ppu->cycle > 340){
+void ppu_step(PPU *ppu) {
+    ppu->cycle++;
+    
+    // 341 cycles per scanline
+    if (ppu->cycle > 340) {
         ppu->cycle = 0;
         ppu->scanline++;
+        
+        // 262 scanlines per frame (-1 à 260)
+        if (ppu->scanline > 260) {
+            ppu->scanline = -1;
+            ppu->frame_count++;
+        }
     }
-
-    if (ppu->scanline > 260) {
-        ppu->scanline = -1;
-        ppu->frame_count++;
-    }
-
-    if (ppu->scanline == -1){
+    
+    // Pre-render scanline (-1)
+    if (ppu->scanline == -1) {
         if (ppu->cycle == 1) {
-            ppu->status &= ~PPUSTATUS_VBLANK; // Clear VBlank flag
-            ppu->status &= ~PPUSTATUS_SPRITE_0; // Clear Sprite 0 hit
+            ppu->status &= ~PPUSTATUS_VBLANK;
+            ppu->status &= ~PPUSTATUS_SPRITE_0;
             ppu->status &= ~PPUSTATUS_SPRITE_OVERFLOW;
         }
     }
-
+    
+    // Scanlines visibles (0-239)
     if (ppu->scanline >= 0 && ppu->scanline < 240) {
-        // TODO: Render pixel by pixel
+        // TODO: render pixel per pixel
     }
+    
+    // Post-render scanline (240)
+    // Nothing to do :-)
 
-    if (ppu->scanline == 241 && ppu->cycle == 1){
-        ppu->status |= PPUSTATUS_VBLANK;  // Set VBlank flag
-        ppu->draw_flag = true; // Frame ready to be draw
+    // VBlank scanlines (241-260)
+    if (ppu->scanline == 241 && ppu->cycle == 1) {
+        ppu->status |= PPUSTATUS_VBLANK;
+        ppu->draw_flag = true;
         
+        // Déclencher NMI si activé
         if ((ppu->ctrl & PPUCTRL_NMI_ENABLE) && ppu->nmi_callback) {
-            ppu->nmi_callback(); // Call CPU
+            ppu->nmi_callback();
         }
     }
 }
+
+// === Callbacks ===
 
 void ppu_set_nmi_callback(PPU *ppu, void (*callback)(void)) {
     ppu->nmi_callback = callback;
@@ -259,7 +271,7 @@ void ppu_dump_oam(PPU *ppu) {
         uint8_t attr = ppu->oam[i * 4 + 2];
         uint8_t x = ppu->oam[i * 4 + 3];
         
-        if (y < 0xEF) {  // Sprites valides
+        if (y < 0xEF) {
             printf("Sprite %02d: Y=%3d X=%3d Tile=$%02X Attr=$%02X\n",
                    i, y, x, tile, attr);
         }

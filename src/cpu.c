@@ -66,6 +66,10 @@ void nes_init(CPU *nes) {
     srand((unsigned) time(NULL));
 }
 
+void cpu_connect_ppu(CPU *cpu, PPU *ppu) {
+    cpu->ppu = ppu;
+}
+
 void nes_write(CPU *nes, uint16_t addr, uint8_t value) {
     // $0000-$07FF : RAM
     if (addr < 0x0800) {
@@ -74,9 +78,24 @@ void nes_write(CPU *nes, uint16_t addr, uint8_t value) {
     // $0800-$1FFF : Miroirs de la RAM
     else if (addr < 0x2000) {
         nes->ram[addr & 0x07FF] = value;
-    } else if (addr >= 0x8000) {
-        // ROM is read-only
     }
+    // $2000-$2007 : Registres PPU
+    else if (addr >= 0x2000 && addr < 0x2008) {
+        if (nes->ppu) {
+            ppu_write_register(nes->ppu, addr, value);
+        }
+    }
+    // $2008-$3FFF : Miroirs des registres PPU
+    else if (addr < 0x4000) {
+        if (nes->ppu) {
+            ppu_write_register(nes->ppu, 0x2000 + (addr & 0x0007), value);
+        }
+    }
+    // $4000-$4013, $4015, $4017 : APU
+    else if (addr < 0x4020) {
+        // TODO: APU
+    }
+    // $8000-$FFFF : ROM (read-only)
 }
 
 
@@ -88,7 +107,23 @@ uint8_t nes_read(CPU *nes, uint16_t addr) {
     // $0800-$1FFF : Miroirs de la RAM
     else if (addr < 0x2000) {
         return nes->ram[addr & 0x07FF];
-    } else if (addr < 0x4020) { // $4000-$4017 : APU et I/O
+    }
+    // $2000-$2007 : Registres PPU
+    else if (addr >= 0x2000 && addr < 0x2008) {
+        if (nes->ppu) {
+            return ppu_read_register(nes->ppu, addr);
+        }
+        return 0;
+    }
+    // $2008-$3FFF : Miroirs des registres PPU
+    else if (addr < 0x4000) {
+        if (nes->ppu) {
+            return ppu_read_register(nes->ppu, 0x2000 + (addr & 0x0007));
+        }
+        return 0;
+    }
+    // $4000-$4017 : APU et I/O
+    else if (addr < 0x4020) {
         return 0;  // TODO
     }
     // $8000-$FFFF : PRG-ROM
@@ -99,6 +134,25 @@ uint8_t nes_read(CPU *nes, uint16_t addr) {
     return 0;
 }
 
+void cpu_nmi(CPU *cpu) {
+    // Push PC (high byte puis low byte)
+    cpu->ram[0x0100 + cpu->SP--] = (cpu->PC >> 8) & 0xFF;
+    cpu->ram[0x0100 + cpu->SP--] = cpu->PC & 0xFF;
+    
+    // Push P
+    cpu->ram[0x0100 + cpu->SP--] = cpu->P & ~0x10;
+    
+    // Set I flag
+    cpu->P |= 0x04;
+    
+    // Jump to NMI vector($FFFA-$FFFB)
+    uint16_t nmi_vector = cpu->prg_rom[0x7FFA] | (cpu->prg_rom[0x7FFB] << 8);
+    cpu->PC = nmi_vector;
+    
+    cpu->cycles += 7;
+    
+    printf("NMI triggered! Jumping to $%04X\n", nmi_vector);
+}
 
 int load_program(CPU *nes, const char *filename) {
     FILE *file = fopen(filename, "rb");
@@ -268,7 +322,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0x04: { // NOP zeropage
             printf("NOP zeropage at PC=0x%04X\n", nes->PC - 1);
-            uint8_t addr = nes_read(nes, nes->PC++);
+            nes->PC++;
             break;
         }
 
@@ -671,10 +725,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0x34: { // NOP zeropage,X
             printf("NOP zeropage,X at PC=0x%04X\n", nes->PC - 1);
-
-            uint8_t base = nes->ram[nes->PC++];
-            uint8_t addr = (base + nes->X) & 0xFF;
-
+            nes->PC++;
             break;
         }
 
@@ -1562,12 +1613,7 @@ void nes_emulation_cycle(CPU *nes) {
 
         case 0xDC: { // NOP absolute,X (illegal)
             printf("NOP absolute,X at PC=0x%04X\n", nes->PC - 1);
-
-            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
-
-            addr += nes->X;
-
             break;
         }
 
@@ -1714,12 +1760,7 @@ void nes_emulation_cycle(CPU *nes) {
                 
         case 0xFC: { // NOP absolute,X (illegal)
             printf("NOP absolute,X at PC=0x%04X\n", nes->PC - 1);
-
-            uint16_t addr = nes_read(nes, nes->PC) | (nes_read(nes, nes->PC + 1) << 8);
             nes->PC += 2;
-
-            addr += nes->X;
-
             break;
         }
 

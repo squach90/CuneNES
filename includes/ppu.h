@@ -49,7 +49,7 @@ typedef struct {
     bool chr_ram_enabled;
 
     uint8_t vram[2048];  // VRAM (Name Table Memory) 0x2000 - 0x27FF (Layout)
-    uint8_t paletteMem[32];  // Palette Memory 0x3F00 - 0x3F1F (Colors)
+    uint8_t palette[32];  // Palette Memory 0x3F00 - 0x3F1F (Colors)
     uint8_t oam[256];  // Object Attribute Memory (sprites)
 
     // === Registres PPU ($2000-$2007) ===
