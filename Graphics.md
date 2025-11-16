@@ -33,22 +33,23 @@ The 2 bytes of the tiles is not enough to specify colors, we need to combined it
 
 The palettes memory look like this:
 
-| ID  |   Background Palette   |  Bytes   | Examples  |
-|:---:|:----------------------:|:--------:|:---------:|
-|     | $3F00                  |    1     | <div style="width:16px; height:16px; background: rgb(63, 194, 205); display:inline-block;"></div> | 
-|  0  | $3F01                  |    4     | <div style="width:16px; height:16px; background: #FCEF00; display:inline-block;"></div> <div style="width:16px; height:16px; background: #F89613; display:inline-block;"></div> <div style="width:16px; height:16px; background: #37D800; display:inline-block;"></div> <div style="width:16px;height:16px;position:relative;display:inline-block;"><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(45deg);"></div><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(-45deg);"></div></div> |
-|  1  | $3F05                  |    4     | <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px;height:16px;position:relative;display:inline-block;"><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(45deg);"></div><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(-45deg);"></div></div> |
-|  2  | $3F09                  |    4     | <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px;height:16px;position:relative;display:inline-block;"><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(45deg);"></div><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(-45deg);"></div></div> |
-|  3  | $3F0D                  |    4     | <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px;height:16px;position:relative;display:inline-block;"><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(45deg);"></div><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(-45deg);"></div></div> |
-|     | **Foreground Palette** |          |           |
-|  4  | $3F11                  |    4     | <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px;height:16px;position:relative;display:inline-block;"><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(45deg);"></div><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(-45deg);"></div></div> |
-|  5  | $3F15                  |    4     | <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px;height:16px;position:relative;display:inline-block;"><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(45deg);"></div><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(-45deg);"></div></div> |
-|  6  | $3F19                  |    4     | <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px;height:16px;position:relative;display:inline-block;"><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(45deg);"></div><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(-45deg);"></div></div> |
-|  7  | $3F1D                  |    4     | <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px; height:16px; border:3px solid #000; display:inline-block;"></div> <div style="width:16px;height:16px;position:relative;display:inline-block;"><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(45deg);"></div><div style="position:absolute;width:16px;height:2px;background:black;top:7px;transform:rotate(-45deg);"></div></div> |
+| ID  | Background Palette | Bytes | Examples |
+|:---:|:-----------------|:------|:--------|
+|     | $3F00             | 1     | 🟦 |
+| 0   | $3F01             | 4     | 🟨🟧🟩✖ |
+| 1   | $3F05             | 4     | ⬜⬜⬜✖ |
+| 2   | $3F09             | 4     | ⬜⬜⬜✖ |
+| 3   | $3F0D             | 4     | ⬜⬜⬜✖ |
+|     | **Foreground Palette** |    |      |
+| 4   | $3F11             | 4     | ⬜⬜⬜✖ |
+| 5   | $3F15             | 4     | ⬜⬜⬜✖ |
+| 6   | $3F19             | 4     | ⬜⬜⬜✖ |
+| 7   | $3F1D             | 4     | ⬜⬜⬜✖ |
+
 
 
 
 For each palette (except BG Color), the 4th byte is a *mirror* (link) to the background color. 
 
-By example, if I want the background color to be <span style="background-color: rgb(63, 194, 205);">**Cyan**</span>, I need to set $3F00 to **0x2c**
+By example, if I want the background color to be <img src="assets/Cyan.png" width="12"> **Cyan**, I need to set $3F00 to **0x2c**
 
