@@ -53,3 +53,44 @@ For each palette (except BG Color), the 4th byte is a *mirror* (link) to the bac
 
 By example, if I want the background color to be <img src="assets/Cyan.png" width="12"> **Cyan**, I need to set $3F00 to **0x2c**
 
+### PPU
+
+A NES frame = 262 scanlines * 341 cycles per line = 89 342 PPU Cycles
+
+Scanline -1: PRE-RENDER (Clean before draw)
+Scanline 0-239: VISIBLE (What we see)
+Scanline 240: POST-RENDER (Empty line)
+Scanline 241-260: VBLANK (CPU can modify VRAM)
+
+Total: 262 scanlines
+---
+#### Cycles
+
+Each PPU cycles is a "dot" on the screen.
+341 cycles: time to draw a line.
+Cycles 0-255: draw visible pixel
+Cycles 256-340: Prep for next line.
+Reset Cycles to 0 and Scanline +1.
+Repeat the process
+
+#### Scanline
+
+262 scanlines per frame.
+If Scanline is superior to 260, we reset scanline to -1, and we add +1 to frame_counter.
+
+##### PRE-RENDER
+
+If PPU cycle = 1, we clear VBlank flag, clear Sprite 0 hit and clear Sprite Overflow.
+
+##### Visible Scanline
+
+If PPU scanline is b/w 0 and 240 we render each pixel.
+<!-- TODO: Explain how render each pixel -->
+
+##### POST-RENDER
+
+Do nothing lol. ⸜( ˃ ᵕ ˂ )⸝
+
+##### VBlank
+
+If PPU scanline is egal to 241 we set the VBlank Flag and say the frame is ready to be draw, activate NMI if activate. [PPU.c L222-229](https://github.com/squach90/CuneNES/blob/main/src/ppu.c#L222-L229)

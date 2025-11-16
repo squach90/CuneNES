@@ -8,7 +8,6 @@ typedef struct {
     // == Memory ==
     uint8_t ram[2048];      // RAM (2 KB)
     uint8_t prg_rom[32768]; // PRG-ROM (max 32 KB)
-    uint8_t chr_rom[8192];  // CHR-ROM (graphismes)
 
     // == CPU Registers ==
     uint8_t A;   // Accumulateur
