@@ -81,4 +81,26 @@ typedef struct {
 
 } PPU;
 
+// === Init Func ===
+void ppu_init(PPU *ppu);
+void ppu_reset(PPU *ppu);
+
+// === Register Access ===
+void ppu_write_register(PPU *ppu, uint16_t addr, uint8_t value);
+uint8_t ppu_read_register(PPU *ppu, uint16_t addr);
+
+// === Memory Access ===
+void ppu_write_memory(PPU *ppu, uint16_t addr, uint8_t value);
+uint8_t ppu_read_memory(PPU *ppu, uint16_t addr);
+
+// === PPU Cycle ===
+void ppu_step(PPU *ppu);        // Exécuter un cycle PPU
+
+// === Callbacks NMI ===
+void ppu_set_nmi_callback(PPU *ppu, void (*callback)(void));
+
+// === Debug ===
+void ppu_dump_palette(PPU *ppu);
+void ppu_dump_oam(PPU *ppu);
+
 #endif

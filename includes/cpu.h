@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+typedef struct PPU PPU;
+
 typedef struct {
     // == Memory ==
     uint8_t ram[2048];      // RAM (2 KB)

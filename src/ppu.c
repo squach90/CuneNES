@@ -228,3 +228,40 @@ void ppu_step(PPU *ppu) {
         }
     }
 }
+
+void ppu_set_nmi_callback(PPU *ppu, void (*callback)(void)) {
+    ppu->nmi_callback = callback;
+}
+
+// === Utils ===
+
+void ppu_dump_palette(PPU *ppu) {
+    printf("=== Palette PPU ===\n");
+    printf("Background palettes:\n");
+    for (int i = 0; i < 16; i++) {
+        if (i % 4 == 0) printf("  Palette %d: ", i / 4);
+        printf("$%02X ", ppu->palette[i]);
+        if (i % 4 == 3) printf("\n");
+    }
+    printf("Sprite palettes:\n");
+    for (int i = 16; i < 32; i++) {
+        if (i % 4 == 0) printf("  Palette %d: ", (i - 16) / 4);
+        printf("$%02X ", ppu->palette[i]);
+        if (i % 4 == 3) printf("\n");
+    }
+}
+
+void ppu_dump_oam(PPU *ppu) {
+    printf("=== OAM (Sprites) ===\n");
+    for (int i = 0; i < 64; i++) {
+        uint8_t y = ppu->oam[i * 4 + 0];
+        uint8_t tile = ppu->oam[i * 4 + 1];
+        uint8_t attr = ppu->oam[i * 4 + 2];
+        uint8_t x = ppu->oam[i * 4 + 3];
+        
+        if (y < 0xEF) {  // Sprites valides
+            printf("Sprite %02d: Y=%3d X=%3d Tile=$%02X Attr=$%02X\n",
+                   i, y, x, tile, attr);
+        }
+    }
+}

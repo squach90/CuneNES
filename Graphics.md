@@ -94,3 +94,5 @@ Do nothing lol. ⸜( ˃ ᵕ ˂ )⸝
 ##### VBlank
 
 If PPU scanline is egal to 241 we set the VBlank Flag and say the frame is ready to be draw, activate NMI if activate. [PPU.c L222-229](https://github.com/squach90/CuneNES/blob/main/src/ppu.c#L222-L229)
+
+During the VBlank the CPU: Load new tiles, Update sprite position, Change palette, Modify scrolling
