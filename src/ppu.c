@@ -68,6 +68,7 @@ uint8_t ppu_read_memory(PPU *ppu, uint16_t addr) {
     }
     // Nametables (0x2000-0x2FFF)
     else if (addr < 0x3F00) {
+        printf("Reading nametable: $%04x\n", addr);
         return ppu->vram[addr & 0x07FF];
     }
     // Palette (0x3F00-0x3FFF)
@@ -217,19 +218,20 @@ void ppu_get_tile_row(PPU *ppu, uint8_t tile_index, uint8_t row, uint8_t *pixels
 
 uint8_t ppu_get_nametable_tile(PPU *ppu, int tile_x, int tile_y) {
     // Nametable 0 start at $2000
-    uint16_t nametable_addr = 0x2000;
-    uint16_t offset = (tile_y % 30) * 32 + (tile_x % 32); // safe bounds
-    return ppu_read_memory(ppu, nametable_addr + offset);
+    uint16_t nametable_base = 0x2000 + ((ppu->ctrl & 0x03) << 10);
+    uint16_t offset = (tile_y % 30) * 32 + (tile_x % 32);
+    return ppu_read_memory(ppu, nametable_base + offset);
+
 }
 
 static uint8_t ppu_get_tile_palette_number(PPU *ppu, int tile_x, int tile_y) {
     // attribute table starts at ...0x23C0 for current nametable
     // attribute address calculation:
-    uint16_t nametable_base = 0x2000; // currently we don't implement multiple nametable selection (use mirroring)
+    uint16_t nametable_base = 0x2000 + ((ppu->ctrl & 0x03) << 10);
     uint16_t attrib_x = tile_x / 4;
     uint16_t attrib_y = tile_y / 4;
-    uint16_t attrib_addr = 0x23C0 + (attrib_y * 8) + attrib_x;
-    uint8_t attrib = ppu_read_memory(ppu, attrib_addr & 0x0FFF | 0x2000);
+    uint16_t attrib_addr = nametable_base + 0x3C0 + (attrib_y * 8) + attrib_x;
+    uint8_t attrib = ppu_read_memory(ppu, attrib_addr);
 
     // select quadrant within attribute byte
     int local_x = (tile_x & 0x03) / 2; // 0 or 1
