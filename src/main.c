@@ -185,8 +185,13 @@ int main(int argc, char **argv) {
         fprintf(stderr, "❌ Failed to load ROM: %s\n", rom_path);
         return 1;
     }
+    
 
     printf("✅ ROM loaded successfully. PC at 0x%04X\n", cpu.PC);
+
+    printf("PPU: first nametable tile at $2000: %02X\n", nes_read(&cpu, 0x2000));
+    printf("PPU: first CHR-ROM tile: %02X\n", ppu.chr_rom[0]);
+
 
     // === Init SDL ===
     Display display = {0};

@@ -29,12 +29,17 @@ void ppu_init(PPU *ppu) {
     ppu->frame_count = 0;
     ppu->nmi_callback = NULL;
 
-    for (int y = 0; y < 240; y++) {
-        for (int x = 0; x < 256; x++) {
-            uint8_t color = ((x / 8) + (y / 8)) & 0x3F;
-            ppu->framebuffer[y * 256 + x] = color;
-        }
-    }
+    // for (int y = 0; y < 240; y++) {
+    //     for (int x = 0; x < 256; x++) {
+    //         uint8_t color = ((x / 8) + (y / 8)) & 0x3F;
+    //         ppu->framebuffer[y * 256 + x] = color;
+    //     }
+    // }
+
+    ppu->palette[0] = 0x0F;
+    ppu->palette[1] = 0xC5;  // Blanc
+    ppu->palette[2] = 0x16;  // Rouge
+    ppu->palette[3] = 0x27;  // Orange
 }
 
 void ppu_reset(PPU *ppu) {
@@ -67,12 +72,13 @@ uint8_t ppu_read_memory(PPU *ppu, uint16_t addr) {
     }
     // Palette (0x3F00-0x3FFF)
     else {
-        addr &= 0x1F;
-        if (addr == 0x10) addr = 0x00;
-        if (addr == 0x14) addr = 0x04;
-        if (addr == 0x18) addr = 0x08;
-        if (addr == 0x1C) addr = 0x0C;
-        return ppu->palette[addr];
+        uint16_t p = addr & 0x1F;
+        // palette mirrors: 0x10/0x14/0x18/0x1C map to 0x00/0x04/0x08/0x0C
+        if (p == 0x10) p = 0x00;
+        if (p == 0x14) p = 0x04;
+        if (p == 0x18) p = 0x08;
+        if (p == 0x1C) p = 0x0C;
+        return ppu->palette[p] & 0x3F;
     }
 }
 
@@ -88,16 +94,17 @@ void ppu_write_memory(PPU *ppu, uint16_t addr, uint8_t value) {
     }
     // Nametables (0x2000-0x2FFF)
     else if (addr < 0x3F00) {
+        printf("Writing to nametable: $%04X = $%02X\n", addr, value);
         ppu->vram[addr & 0x07FF] = value;
     }
     // Palette (0x3F00-0x3FFF)
     else {
-        addr &= 0x1F;
-        if (addr == 0x10) addr = 0x00;
-        if (addr == 0x14) addr = 0x04;
-        if (addr == 0x18) addr = 0x08;
-        if (addr == 0x1C) addr = 0x0C;
-        ppu->palette[addr] = value & 0x3F;
+        uint16_t p = addr & 0x1F;
+        if (p == 0x10) p = 0x00;
+        if (p == 0x14) p = 0x04;
+        if (p == 0x18) p = 0x08;
+        if (p == 0x1C) p = 0x0C;
+        ppu->palette[p] = value & 0x3F;
     }
 }
 
@@ -193,6 +200,83 @@ uint8_t ppu_read_register(PPU *ppu, uint16_t addr) {
     return value;
 }
 
+void ppu_get_tile_row(PPU *ppu, uint8_t tile_index, uint8_t row, uint8_t *pixels) {
+    // Choose background pattern table base according to PPUCTRL bit $10
+    uint16_t pattern_base = (ppu->ctrl & PPUCTRL_BG_PATTERN) ? 0x1000 : 0x0000;
+    uint16_t addr = pattern_base + ((uint16_t)tile_index << 4) + (row & 0x07);
+
+    uint8_t low_byte  = ppu->chr_rom[pattern_base + tile_index * 16 + row];
+    uint8_t high_byte = ppu->chr_rom[pattern_base + tile_index * 16 + row + 8];
+
+    for (int x = 0; x < 8; x++) {
+        uint8_t bit_low  = (low_byte  >> (7 - x)) & 1;
+        uint8_t bit_high = (high_byte >> (7 - x)) & 1;
+        pixels[x] = (bit_high << 1) | bit_low;  // 0-3
+    }
+}
+
+uint8_t ppu_get_nametable_tile(PPU *ppu, int tile_x, int tile_y) {
+    // Nametable 0 start at $2000
+    uint16_t nametable_addr = 0x2000;
+    uint16_t offset = (tile_y % 30) * 32 + (tile_x % 32); // safe bounds
+    return ppu_read_memory(ppu, nametable_addr + offset);
+}
+
+static uint8_t ppu_get_tile_palette_number(PPU *ppu, int tile_x, int tile_y) {
+    // attribute table starts at ...0x23C0 for current nametable
+    // attribute address calculation:
+    uint16_t nametable_base = 0x2000; // currently we don't implement multiple nametable selection (use mirroring)
+    uint16_t attrib_x = tile_x / 4;
+    uint16_t attrib_y = tile_y / 4;
+    uint16_t attrib_addr = 0x23C0 + (attrib_y * 8) + attrib_x;
+    uint8_t attrib = ppu_read_memory(ppu, attrib_addr & 0x0FFF | 0x2000);
+
+    // select quadrant within attribute byte
+    int local_x = (tile_x & 0x03) / 2; // 0 or 1
+    int local_y = (tile_y & 0x03) / 2; // 0 or 1
+    int shift = (local_y * 2 + local_x) * 2;
+    uint8_t palette = (attrib >> shift) & 0x03;
+
+    return palette;
+}
+
+uint8_t ppu_get_background_color(PPU *ppu, uint8_t palette_num, uint8_t pixel_value) {
+    // Pixel 0 = transparent
+    if (pixel_value == 0) {
+        return ppu->palette[0];
+    }
+    
+    // Palette background : 4 colors per palette
+    uint16_t palette_index = (palette_num << 2) | (pixel_value & 0x03);
+    
+    return ppu->palette[palette_index] & 0x3F;
+}
+
+void ppu_render_scanline(PPU *ppu) {
+    if (ppu->scanline < 0 || ppu->scanline >= SCREEN_HEIGHT) return;
+    int y = ppu->scanline;
+
+    for (int x = 0; x < SCREEN_WIDTH; x++) {
+        int tile_x = x / TILE_SIZE;
+        int tile_y = y / TILE_SIZE;
+        int pixel_x = x % TILE_SIZE;
+        int pixel_y = y % TILE_SIZE;
+
+        uint8_t tile_index = ppu_get_nametable_tile(ppu, tile_x, tile_y);
+        uint8_t pixels[8];
+        ppu_get_tile_row(ppu, tile_index, pixel_y, pixels);
+
+        uint8_t palette_num = ppu_get_tile_palette_number(ppu, tile_x, tile_y);
+        uint8_t pixel_value = pixels[pixel_x];
+
+        uint8_t color_index = ppu_get_background_color(ppu, palette_num, pixel_value);
+
+        uint8_t nes_color_index = ppu_get_background_color(ppu, palette_num, pixel_value);
+        ppu->framebuffer[y * SCREEN_WIDTH + x] = 0xFF000000 | NES_PALETTE[nes_color_index];
+
+    }
+}
+
 // === PPU Cycle ===
 
 void ppu_step(PPU *ppu) {
@@ -222,6 +306,9 @@ void ppu_step(PPU *ppu) {
     // Scanlines visibles (0-239)
     if (ppu->scanline >= 0 && ppu->scanline < 240) {
         // TODO: render pixel per pixel
+        if (ppu->cycle == 256) {
+            ppu_render_scanline(ppu);
+        }
     }
     
     // Post-render scanline (240)

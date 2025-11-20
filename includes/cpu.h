@@ -10,6 +10,8 @@ typedef struct {
     uint8_t ram[2048];      // RAM (2 KB)
     uint8_t prg_rom[32768]; // PRG-ROM (max 32 KB)
 
+    uint8_t prg_banks;
+
     // == CPU Registers ==
     uint8_t A;   // Accumulateur
     uint8_t X;   // Registre X

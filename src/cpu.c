@@ -128,8 +128,12 @@ uint8_t nes_read(CPU *nes, uint16_t addr) {
     }
     // $8000-$FFFF : PRG-ROM
     else if (addr >= 0x8000) {
-        return nes->prg_rom[addr & 0x3FFF];
+        if (nes->prg_banks == 1)
+            return nes->prg_rom[addr & 0x3FFF];
+        else
+            return nes->prg_rom[addr & 0x7FFF];
     }
+
     
     return 0;
 }
@@ -161,22 +165,24 @@ int load_program(CPU *nes, const char *filename) {
         return 1;
     }
 
+    
     uint8_t header[16];
     if (fread(header, 1, 16, file) != 16) {
         fprintf(stderr, "❌ Invalid NES header\n");
         fclose(file);
         return 1;
     }
-
+    
     if (header[0] != 'N' || header[1] != 'E' || header[2] != 'S' || header[3] != 0x1A) {
         fprintf(stderr, "❌ Not a valid NES file\n");
         fclose(file);
         return 1;
     }
-
+    
     uint8_t prg_size = header[4]; // nb of prg bank 16KB each
     uint8_t chr_size = header[5]; // nb of chr bank 8KB each
-
+    nes->prg_banks = prg_size;
+    
     printf("PRG-ROM size: %d x 16KB\n", prg_size);
     printf("CHR-ROM size: %d x 8KB\n", chr_size);
 
@@ -192,6 +198,41 @@ int load_program(CPU *nes, const char *filename) {
         return 1;
     }
     printf("✅ PRG-ROM loaded (%d KB)\n", prg_size * 16);
+
+    // === CHR-ROM / CHR-RAM ===
+    if (chr_size > 0) {
+        if (!nes->ppu) {
+            fprintf(stderr, "❌ No PPU connected to CPU\n");
+            fclose(file);
+            return 1;
+        }
+
+        // Skip trainer if present
+        int trainer = (header[6] & 0x04) ? 512 : 0;
+        fseek(file, 16 + trainer + prg_size * 16384, SEEK_SET);
+
+        if (chr_size > 1) {
+            fprintf(stderr, "⚠️ Only 8KB CHR-ROM supported, ignoring extra banks\n");
+        }
+
+        fseek(file, 16 + trainer + prg_size * 16384, SEEK_SET);
+        if (fread(nes->ppu->chr_rom, 1, 8192, file) != 8192) {
+            fprintf(stderr, "Failed to read CHR-ROM\n");
+            fclose(file);
+            return 1;
+        }
+        nes->ppu->chr_ram_enabled = false;
+        printf("✅ CHR-ROM loaded (8 KB)\n");
+    } else {
+        if (!nes->ppu) {
+            fprintf(stderr, "❌ No PPU connected to CPU\n");
+            fclose(file);
+            return 1;
+        }
+        nes->ppu->chr_ram_enabled = true;
+        memset(nes->ppu->chr_rom, 0, sizeof(nes->ppu->chr_rom));
+        printf("ℹ️ No CHR-ROM: using CHR-RAM (8 KB)\n");
+    }
 
     fclose(file);
 
@@ -986,6 +1027,14 @@ void nes_emulation_cycle(CPU *nes) {
             nes->P |= FLAG_I;
             break;
 
+        case 0x80: { // NOP immediate
+            uint8_t operand = nes->prg_rom[nes->PC];
+            nes->PC += 1;
+            printf("NOP #$%02X at PC=0x%04X\n", operand, nes->PC - 2);
+            break;
+        }
+
+
         case 0x84: { // STY zeropage
             printf("STY zeropage at PC=0x%04X\n", nes->PC - 1);
             uint8_t addr = nes_read(nes, nes->PC++);
@@ -1537,6 +1586,23 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0xE0: {
+            printf("CPX #$%02X at PC=0x%04X\n", nes->prg_rom[nes->PC], nes->PC - 1);
+            uint8_t value = nes->prg_rom[nes->PC];
+            nes->PC += 1;
+
+            uint8_t result = nes->X - value;
+
+            if (nes->X >= value) {
+                nes->P |= FLAG_C;
+            } else {
+                nes->P &= ~FLAG_C;
+            }
+
+            update_NZ_flags(nes, result);
+            break;
+        }
+
 
         case 0xE6: {
             printf("INC at PC=0x%04X\n", nes->PC - 1);
@@ -1550,6 +1616,28 @@ void nes_emulation_cycle(CPU *nes) {
             break;
         }
 
+        case 0xE7: { // SBC Zero Page
+            uint8_t zp_addr = nes->prg_rom[nes->PC];
+            nes->PC += 1;
+
+            uint8_t value = nes_read(nes, zp_addr);
+            uint16_t temp = nes->A - value - (1 - ((nes->P & FLAG_C) ? 1 : 0));
+
+            printf("SBC $%02X at PC=0x%04X\n", zp_addr, nes->PC - 2);
+
+            nes->A = temp & 0xFF;
+
+            if (temp <= 0xFF)
+                nes->P |= FLAG_C;
+            else
+                nes->P &= ~FLAG_C;
+
+            update_NZ_flags(nes, nes->A);
+
+            break;
+        }
+
+
         case 0xE8:
             printf("INX at PC=0x%04X\n", nes->PC - 1);
             nes->X += 1;
@@ -1562,6 +1650,25 @@ void nes_emulation_cycle(CPU *nes) {
         case 0xEA:
             printf("NOP at PC=0x%04X\n", nes->PC - 1);
             break;
+
+        case 0xEC: { // CPX absolute
+            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
+            nes->PC += 2;
+
+            uint8_t value = nes_read(nes, addr);
+            uint8_t result = nes->X - value;
+
+            printf("CPX $%04X at PC=0x%04X\n", addr, nes->PC - 3);
+
+            if (nes->X >= value)
+                nes->P |= FLAG_C;
+            else
+                nes->P &= ~FLAG_C;
+
+            update_NZ_flags(nes, result);
+            break;
+        }
+
         
         case 0xEE: {
             printf("INC (absolute) at PC=0x%04X\n", nes->PC - 1);

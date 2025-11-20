@@ -93,6 +93,9 @@ uint8_t ppu_read_register(PPU *ppu, uint16_t addr);
 void ppu_write_memory(PPU *ppu, uint16_t addr, uint8_t value);
 uint8_t ppu_read_memory(PPU *ppu, uint16_t addr);
 
+// === Frame ===
+void ppu_render_scanline(PPU *ppu);
+
 // === PPU Cycle ===
 void ppu_step(PPU *ppu);        // Exécuter un cycle PPU
 
