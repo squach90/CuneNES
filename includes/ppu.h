@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "cartridge.h"
 
 #define SCREEN_WIDTH  256
 #define SCREEN_HEIGHT 240
@@ -68,7 +69,7 @@ typedef struct {
     uint8_t fine_x;
 
     // === Framebuffer ===
-    uint8_t framebuffer[SCREEN_WIDTH * SCREEN_HEIGHT];
+    uint32_t framebuffer[SCREEN_WIDTH * SCREEN_HEIGHT];
     bool draw_flag;
 
     // === State ===
@@ -78,6 +79,8 @@ typedef struct {
     uint64_t frame_count;
 
     void (*nmi_callback)(void);
+
+    MirrorMode mirroring;
 
 } PPU;
 
@@ -92,6 +95,7 @@ uint8_t ppu_read_register(PPU *ppu, uint16_t addr);
 // === Memory Access ===
 void ppu_write_memory(PPU *ppu, uint16_t addr, uint8_t value);
 uint8_t ppu_read_memory(PPU *ppu, uint16_t addr);
+void ppu_load_cartridge(PPU *ppu, Cartridge *cart);
 
 // === Frame ===
 void ppu_render_scanline(PPU *ppu);

@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include "../includes/cpu.h"
 #include "../includes/ppu.h"
+#include "../includes/cartridge.h"
 
 #define SCREEN_WIDTH 256
 #define SCREEN_HEIGHT 240
@@ -102,20 +103,18 @@ void cleanup_display(Display *display) {
 }
 
 void render_frame(Display *display, PPU *ppu) {
-    for (int y = 0; y < SCREEN_HEIGHT; y++) {
-        for (int x = 0; x < SCREEN_WIDTH; x++) {
-            uint8_t color_index = ppu->framebuffer[y * SCREEN_WIDTH + x] & 0x3F;
-            
-            uint32_t rgb_color = NES_PALETTE[color_index];
-            display->pixels[y * SCREEN_WIDTH + x] = 0xFF000000 | rgb_color;
-        }
+    for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+        uint8_t nes_color_index = ppu->framebuffer[i];       // valeur 0-63
+        display->pixels[i] = NES_PALETTE[nes_color_index];   // couleur RGB réelle
     }
 
-    SDL_UpdateTexture(display->texture, NULL, display->pixels, SCREEN_WIDTH * sizeof(uint32_t));
+    SDL_UpdateTexture(display->texture, NULL, display->pixels, 
+                     SCREEN_WIDTH * sizeof(uint32_t));
     SDL_RenderClear(display->renderer);
     SDL_RenderCopy(display->renderer, display->texture, NULL, NULL);
     SDL_RenderPresent(display->renderer);
 }
+
 
 void handle_input(SDL_Event *event, CPU *cpu, bool *running) {
     while (SDL_PollEvent(event)) {
@@ -167,9 +166,10 @@ int main(int argc, char **argv) {
 
     const char *rom_path = argv[1];
 
-    // === Init CPU & PPU ===
+    // === Init CPU, PPU & CART ===
     CPU cpu;
     PPU ppu;
+    Cartridge *cart = cartridge_load(rom_path);
 
     nes_init(&cpu);
     ppu_init(&ppu);
@@ -181,11 +181,13 @@ int main(int argc, char **argv) {
     ppu_set_nmi_callback(&ppu, nmi_callback);
 
     // === Load ROM ===
-    if (load_program(&cpu, rom_path) != 0) {
-        fprintf(stderr, "❌ Failed to load ROM: %s\n", rom_path);
+    if (!cart) {
+        fprintf(stderr, "❌ Failed to load cartridge: %s\n", rom_path);
         return 1;
     }
-    
+
+    cpu_load_cartridge(&cpu, cart);
+    ppu_load_cartridge(&ppu, cart);
 
     printf("✅ ROM loaded successfully. PC at 0x%04X\n", cpu.PC);
 
@@ -219,10 +221,10 @@ int main(int argc, char **argv) {
             render_frame(&display, &ppu);
             ppu.draw_flag = false;
             
-            if (ppu.frame_count % 60 == 0) {
-                printf("Frame: %llu, PC: 0x%04X, A: 0x%02X, X: 0x%02X, Y: 0x%02X\n",
-                       ppu.frame_count, cpu.PC, cpu.A, cpu.X, cpu.Y);
-            }
+            // if (ppu.frame_count % 60 == 0) {
+            //     printf("Frame: %llu, PC: 0x%04X, A: 0x%02X, X: 0x%02X, Y: 0x%02X\n",
+            //            ppu.frame_count, cpu.PC, cpu.A, cpu.X, cpu.Y);
+            // }
         }
     }
 
