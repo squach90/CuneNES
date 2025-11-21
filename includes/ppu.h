@@ -68,6 +68,8 @@ typedef struct {
     uint16_t temp_addr;
     uint8_t fine_x;
 
+    uint16_t vram_addr;
+
     // === Framebuffer ===
     uint32_t framebuffer[SCREEN_WIDTH * SCREEN_HEIGHT];
     bool draw_flag;
