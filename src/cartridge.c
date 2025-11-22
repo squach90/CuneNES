@@ -1,4 +1,5 @@
 #include "../includes/cartridge.h"
+#include "../includes/mapper0.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -66,7 +67,9 @@ Cartridge *cartridge_load(const char *filename) {
 
     // --------- Create mapper ---------
     switch (cart->mapper_id) {
-        case 0: cart->mapper = NULL; break;
+        case 0: 
+            cart->mapper = mapper0_create(cart);
+            break;
         case 1: cart->mapper = NULL; break;
         default:
             printf("❌ Mapper %d not supported\n", cart->mapper_id);

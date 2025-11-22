@@ -14,7 +14,7 @@ typedef enum {
     MIRROR_FOURSCREEN = 2
 } MirrorMode;
 
-// Forward declaration
+struct Mapper; // Forward declaration
 typedef struct Mapper Mapper;
 
 // -------------------------------
@@ -35,19 +35,6 @@ typedef struct {
 
     Mapper *mapper;      // Pointer to mapper implementation
 } Cartridge;
-
-// -------------------------------
-// Mapper interface
-// -------------------------------
-struct Mapper {
-    uint8_t (*cpu_read)(Cartridge *cart, uint16_t addr);
-    void    (*cpu_write)(Cartridge *cart, uint16_t addr, uint8_t data);
-
-    uint8_t (*ppu_read)(Cartridge *cart, uint16_t addr);
-    void    (*ppu_write)(Cartridge *cart, uint16_t addr, uint8_t data);
-
-    void *data;
-};
 
 // -------------------------------
 // Cartridge loading / freeing

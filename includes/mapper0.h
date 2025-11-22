@@ -4,8 +4,11 @@
 #include "cpu.h"
 #include "ppu.h"
 #include "cartridge.h"
+#include "mapper.h"
 
-// Fonction pour charger un cartouche avec mapper 0
+// Création du mapper 0
+Mapper *mapper0_create(Cartridge *cart);
 void mapper0_load(Cartridge *cart, CPU *cpu, PPU *ppu);
+
 
 #endif // MAPPER0_H

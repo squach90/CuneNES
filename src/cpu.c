@@ -131,9 +131,9 @@ uint8_t nes_read(CPU *nes, uint16_t addr) {
     // $8000-$FFFF : PRG-ROM
     else if (addr >= 0x8000) {
         if (nes->prg_banks == 1)
-            return nes->prg_memory[addr & 0x3FFF];
-        else
-            return nes->prg_memory[addr & 0x7FFF];
+            return nes->prg_memory[addr & 0x3FFF];  // mirror bank
+        else if (nes->prg_banks == 2)
+            return nes->prg_memory[addr - 0x8000];  // bank0/$8000-$BFFF, bank1/$C000-$FFFF
     }
 
     
@@ -152,7 +152,7 @@ void cpu_nmi(CPU *cpu) {
     cpu->P |= 0x04;
     
     // Jump to NMI vector($FFFA-$FFFB)
-    uint16_t nmi_vector = cpu->prg_memory[0x7FFA] | (cpu->prg_memory[0x7FFB] << 8);
+    uint16_t nmi_vector = nes_read(cpu, 0xFFFA) | (nes_read(cpu, 0xFFFB) << 8);
     cpu->PC = nmi_vector;
     
     cpu->cycles += 7;
@@ -162,13 +162,33 @@ void cpu_nmi(CPU *cpu) {
 
 void cpu_load_cartridge(CPU *cpu, Cartridge *cart) {
     if (cart->mapper_id == 0) {
+        // Charge la ROM et les CHR dans le CPU/PPU
         mapper0_load(cart, cpu, cpu->ppu);
+
+        // Affiche les 16 premiers octets de la CHR-ROM
+        printf("First 16 bytes of CHR-ROM:\n");
+        for (int i = 0; i < 16; i++) 
+            printf("%02X ", cpu->ppu->chr_rom[i]);
+        printf("\n");
+
+        // Affiche les 16 premiers pixels du framebuffer
+        printf("First 16 pixels of framebuffer:\n");
+        for (int i = 0; i < 16; i++) 
+            printf("%02X ", cpu->ppu->framebuffer[i]);
+        printf("\n");
     }
 
-    cpu->PC = cpu->prg_memory[0xFFFC] | (cpu->prg_memory[0xFFFD] << 8);
+    // Initialisation du PC selon la taille de la ROM
+    if (cpu->prg_banks == 1) {
+        // Une seule banque PRG-ROM de 16 KB : mirror pour $C000-$FFFF
+        cpu->PC = cpu->prg_memory[0x3FFC] | (cpu->prg_memory[0x3FFD] << 8);
+    } else if (cpu->prg_banks == 2) {
+        // Deux banques PRG-ROM : vector dans $FFFC-$FFFD
+        cpu->PC = nes_read(cpu, 0xFFFC) | (nes_read(cpu, 0xFFFD) << 8);
+    }
+
+    printf("✅ CPU reset vector set to 0x%04X\n", cpu->PC);
 }
-
-
 
 
 // LSR – Logical Shift Right

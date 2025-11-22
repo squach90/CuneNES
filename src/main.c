@@ -5,6 +5,8 @@
 #include "../includes/cpu.h"
 #include "../includes/ppu.h"
 #include "../includes/cartridge.h"
+#include "../includes/mapper.h"
+
 
 #define SCREEN_WIDTH 256
 #define SCREEN_HEIGHT 240
@@ -105,7 +107,7 @@ void cleanup_display(Display *display) {
 void render_frame(Display *display, PPU *ppu) {
     for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
         uint8_t nes_color_index = ppu->framebuffer[i];       // valeur 0-63
-        display->pixels[i] = NES_PALETTE[nes_color_index];   // couleur RGB réelle
+        display->pixels[i] = NES_PALETTE[ppu->framebuffer[i]];   // couleur RGB réelle
     }
 
     SDL_UpdateTexture(display->texture, NULL, display->pixels, 
@@ -170,10 +172,11 @@ int main(int argc, char **argv) {
     CPU cpu;
     PPU ppu;
     Cartridge *cart = cartridge_load(rom_path);
-
+    
     nes_init(&cpu);
     ppu_init(&ppu);
     
+    cart->mapper->load(cart, &cpu, &ppu);
     cpu_connect_ppu(&cpu, &ppu);
     
 
@@ -187,13 +190,13 @@ int main(int argc, char **argv) {
     }
 
     cpu_load_cartridge(&cpu, cart);
-    ppu_load_cartridge(&ppu, cart);
+    // ppu_load_cartridge(&ppu, cart);
+    cpu_nmi(&cpu);
 
     printf("✅ ROM loaded successfully. PC at 0x%04X\n", cpu.PC);
 
     printf("PPU: first nametable tile at $2000: %02X\n", nes_read(&cpu, 0x2000));
     printf("PPU: first CHR-ROM tile: %02X\n", ppu.chr_rom[0]);
-
 
     // === Init SDL ===
     Display display = {0};
@@ -206,25 +209,29 @@ int main(int argc, char **argv) {
     SDL_Event event;
     
     printf("✅ Emulator started. Press ESC to quit.\n");
+    printf("Reset vector: %02X %02X\n", cpu.prg_memory[0xFFFC], cpu.prg_memory[0xFFFD]);
+    printf("PRG memory at $8000: %02X %02X %02X %02X\n",
+       cpu.prg_memory[0x8000],
+       cpu.prg_memory[0x8001],
+       cpu.prg_memory[0x8002],
+       cpu.prg_memory[0x8003]);
+
 
     while (running) {
         handle_input(&event, &cpu, &running);
 
         nes_emulation_cycle(&cpu);
-        
-        // PPU x3 than the CPU
-        ppu_step(&ppu);
-        ppu_step(&ppu);
-        ppu_step(&ppu);
+        for (int i = 0; i < 89342; i++)
+            ppu_step(&ppu);
 
         if (ppu.draw_flag) {
+            printf("PPU framebuffer first pixels: %02X %02X %02X %02X\n",
+                ppu.framebuffer[0], ppu.framebuffer[1],
+                ppu.framebuffer[2], ppu.framebuffer[3]);
+
+
             render_frame(&display, &ppu);
             ppu.draw_flag = false;
-            
-            // if (ppu.frame_count % 60 == 0) {
-            //     printf("Frame: %llu, PC: 0x%04X, A: 0x%02X, X: 0x%02X, Y: 0x%02X\n",
-            //            ppu.frame_count, cpu.PC, cpu.A, cpu.X, cpu.Y);
-            // }
         }
     }
 
