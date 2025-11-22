@@ -4,9 +4,6 @@
 #include <SDL.h>
 #include "../includes/cpu.h"
 #include "../includes/ppu.h"
-#include "../includes/cartridge.h"
-#include "../includes/mapper.h"
-
 
 #define SCREEN_WIDTH 256
 #define SCREEN_HEIGHT 240
@@ -105,18 +102,20 @@ void cleanup_display(Display *display) {
 }
 
 void render_frame(Display *display, PPU *ppu) {
-    for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
-        uint8_t nes_color_index = ppu->framebuffer[i];       // valeur 0-63
-        display->pixels[i] = NES_PALETTE[ppu->framebuffer[i]];   // couleur RGB réelle
+    for (int y = 0; y < SCREEN_HEIGHT; y++) {
+        for (int x = 0; x < SCREEN_WIDTH; x++) {
+            uint8_t color_index = ppu->framebuffer[y * SCREEN_WIDTH + x] & 0x3F;
+            
+            uint32_t rgb_color = NES_PALETTE[color_index];
+            display->pixels[y * SCREEN_WIDTH + x] = 0xFF000000 | rgb_color;
+        }
     }
 
-    SDL_UpdateTexture(display->texture, NULL, display->pixels, 
-                     SCREEN_WIDTH * sizeof(uint32_t));
+    SDL_UpdateTexture(display->texture, NULL, display->pixels, SCREEN_WIDTH * sizeof(uint32_t));
     SDL_RenderClear(display->renderer);
     SDL_RenderCopy(display->renderer, display->texture, NULL, NULL);
     SDL_RenderPresent(display->renderer);
 }
-
 
 void handle_input(SDL_Event *event, CPU *cpu, bool *running) {
     while (SDL_PollEvent(event)) {
@@ -168,15 +167,13 @@ int main(int argc, char **argv) {
 
     const char *rom_path = argv[1];
 
-    // === Init CPU, PPU & CART ===
+    // === Init CPU & PPU ===
     CPU cpu;
     PPU ppu;
-    Cartridge *cart = cartridge_load(rom_path);
-    
+
     nes_init(&cpu);
     ppu_init(&ppu);
     
-    cart->mapper->load(cart, &cpu, &ppu);
     cpu_connect_ppu(&cpu, &ppu);
     
 
@@ -184,19 +181,17 @@ int main(int argc, char **argv) {
     ppu_set_nmi_callback(&ppu, nmi_callback);
 
     // === Load ROM ===
-    if (!cart) {
-        fprintf(stderr, "❌ Failed to load cartridge: %s\n", rom_path);
+    if (load_program(&cpu, rom_path) != 0) {
+        fprintf(stderr, "❌ Failed to load ROM: %s\n", rom_path);
         return 1;
     }
-
-    cpu_load_cartridge(&cpu, cart);
-    // ppu_load_cartridge(&ppu, cart);
-    cpu_nmi(&cpu);
+    
 
     printf("✅ ROM loaded successfully. PC at 0x%04X\n", cpu.PC);
 
     printf("PPU: first nametable tile at $2000: %02X\n", nes_read(&cpu, 0x2000));
     printf("PPU: first CHR-ROM tile: %02X\n", ppu.chr_rom[0]);
+
 
     // === Init SDL ===
     Display display = {0};
@@ -209,29 +204,25 @@ int main(int argc, char **argv) {
     SDL_Event event;
     
     printf("✅ Emulator started. Press ESC to quit.\n");
-    printf("Reset vector: %02X %02X\n", cpu.prg_memory[0xFFFC], cpu.prg_memory[0xFFFD]);
-    printf("PRG memory at $8000: %02X %02X %02X %02X\n",
-       cpu.prg_memory[0x8000],
-       cpu.prg_memory[0x8001],
-       cpu.prg_memory[0x8002],
-       cpu.prg_memory[0x8003]);
-
 
     while (running) {
         handle_input(&event, &cpu, &running);
 
         nes_emulation_cycle(&cpu);
-        for (int i = 0; i < 89342; i++)
-            ppu_step(&ppu);
+        
+        // PPU x3 than the CPU
+        ppu_step(&ppu);
+        ppu_step(&ppu);
+        ppu_step(&ppu);
 
         if (ppu.draw_flag) {
-            printf("PPU framebuffer first pixels: %02X %02X %02X %02X\n",
-                ppu.framebuffer[0], ppu.framebuffer[1],
-                ppu.framebuffer[2], ppu.framebuffer[3]);
-
-
             render_frame(&display, &ppu);
             ppu.draw_flag = false;
+            
+            if (ppu.frame_count % 60 == 0) {
+                printf("Frame: %llu, PC: 0x%04X, A: 0x%02X, X: 0x%02X, Y: 0x%02X\n",
+                       ppu.frame_count, cpu.PC, cpu.A, cpu.X, cpu.Y);
+            }
         }
     }
 

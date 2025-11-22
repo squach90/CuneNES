@@ -10,7 +10,7 @@ OBJ_DIR = obj
 BIN_DIR = bin
 
 # Fichiers
-SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/cpu.c $(SRC_DIR)/ppu.c $(SRC_DIR)/cartridge.c $(SRC_DIR)/mapper0.c
+SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/cpu.c $(SRC_DIR)/ppu.c
 OBJECTS = $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 TARGET = $(BIN_DIR)/nes
 

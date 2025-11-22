@@ -46,8 +46,6 @@ Relative (branch): int8_t offset = nes->ram[nes->PC++];
 #include <string.h>
 #include <time.h>
 #include "../includes/cpu.h"
-#include "../includes/cartridge.h"
-#include "../includes/mapper0.h"
 
 #define FLAG_C 0x01
 #define FLAG_Z 0x02
@@ -131,9 +129,9 @@ uint8_t nes_read(CPU *nes, uint16_t addr) {
     // $8000-$FFFF : PRG-ROM
     else if (addr >= 0x8000) {
         if (nes->prg_banks == 1)
-            return nes->prg_memory[addr & 0x3FFF];  // mirror bank
-        else if (nes->prg_banks == 2)
-            return nes->prg_memory[addr - 0x8000];  // bank0/$8000-$BFFF, bank1/$C000-$FFFF
+            return nes->prg_rom[addr & 0x3FFF];
+        else
+            return nes->prg_rom[addr & 0x7FFF];
     }
 
     
@@ -152,7 +150,7 @@ void cpu_nmi(CPU *cpu) {
     cpu->P |= 0x04;
     
     // Jump to NMI vector($FFFA-$FFFB)
-    uint16_t nmi_vector = nes_read(cpu, 0xFFFA) | (nes_read(cpu, 0xFFFB) << 8);
+    uint16_t nmi_vector = cpu->prg_rom[0x7FFA] | (cpu->prg_rom[0x7FFB] << 8);
     cpu->PC = nmi_vector;
     
     cpu->cycles += 7;
@@ -160,36 +158,111 @@ void cpu_nmi(CPU *cpu) {
     printf("NMI triggered! Jumping to $%04X\n", nmi_vector);
 }
 
-void cpu_load_cartridge(CPU *cpu, Cartridge *cart) {
-    if (cart->mapper_id == 0) {
-        // Charge la ROM et les CHR dans le CPU/PPU
-        mapper0_load(cart, cpu, cpu->ppu);
-
-        // Affiche les 16 premiers octets de la CHR-ROM
-        printf("First 16 bytes of CHR-ROM:\n");
-        for (int i = 0; i < 16; i++) 
-            printf("%02X ", cpu->ppu->chr_rom[i]);
-        printf("\n");
-
-        // Affiche les 16 premiers pixels du framebuffer
-        printf("First 16 pixels of framebuffer:\n");
-        for (int i = 0; i < 16; i++) 
-            printf("%02X ", cpu->ppu->framebuffer[i]);
-        printf("\n");
+int load_program(CPU *nes, const char *filename) {
+    FILE *file = fopen(filename, "rb");
+    if (!file) {
+        fprintf(stderr, "❌ Cannot open file %s\n", filename);
+        return 1;
     }
 
-    // Initialisation du PC selon la taille de la ROM
-    if (cpu->prg_banks == 1) {
-        // Une seule banque PRG-ROM de 16 KB : mirror pour $C000-$FFFF
-        cpu->PC = cpu->prg_memory[0x3FFC] | (cpu->prg_memory[0x3FFD] << 8);
-    } else if (cpu->prg_banks == 2) {
-        // Deux banques PRG-ROM : vector dans $FFFC-$FFFD
-        cpu->PC = nes_read(cpu, 0xFFFC) | (nes_read(cpu, 0xFFFD) << 8);
+    
+    uint8_t header[16];
+    if (fread(header, 1, 16, file) != 16) {
+        fprintf(stderr, "❌ Invalid NES header\n");
+        fclose(file);
+        return 1;
+    }
+    
+    if (header[0] != 'N' || header[1] != 'E' || header[2] != 'S' || header[3] != 0x1A) {
+        fprintf(stderr, "❌ Not a valid NES file\n");
+        fclose(file);
+        return 1;
+    }
+    
+    uint8_t prg_size = header[4]; // nb of prg bank 16KB each
+    uint8_t chr_size = header[5]; // nb of chr bank 8KB each
+    nes->prg_banks = prg_size;
+    
+    printf("PRG-ROM size: %d x 16KB\n", prg_size);
+    printf("CHR-ROM size: %d x 8KB\n", chr_size);
+
+    if (prg_size * 16384 > sizeof(nes->prg_rom)) {
+        fprintf(stderr, "❌ PRG-ROM too large\n");
+        fclose(file);
+        return 1;
+    }
+    
+    if (fread(nes->prg_rom, 1, prg_size * 16384, file) != prg_size * 16384) {
+        fprintf(stderr, "❌ Failed to read PRG-ROM\n");
+        fclose(file);
+        return 1;
+    }
+    printf("✅ PRG-ROM loaded (%d KB)\n", prg_size * 16);
+
+    // === CHR-ROM / CHR-RAM ===
+    if (chr_size > 0) {
+        if (!nes->ppu) {
+            fprintf(stderr, "❌ No PPU connected to CPU\n");
+            fclose(file);
+            return 1;
+        }
+
+        // Skip trainer if present
+        int trainer = (header[6] & 0x04) ? 512 : 0;
+        fseek(file, 16 + trainer + prg_size * 16384, SEEK_SET);
+
+        if (chr_size > 1) {
+            fprintf(stderr, "⚠️ Only 8KB CHR-ROM supported, ignoring extra banks\n");
+        }
+
+        fseek(file, 16 + trainer + prg_size * 16384, SEEK_SET);
+        if (fread(nes->ppu->chr_rom, 1, 8192, file) != 8192) {
+            fprintf(stderr, "Failed to read CHR-ROM\n");
+            fclose(file);
+            return 1;
+        }
+        nes->ppu->chr_ram_enabled = false;
+        printf("✅ CHR-ROM loaded (8 KB)\n");
+    } else {
+        if (!nes->ppu) {
+            fprintf(stderr, "❌ No PPU connected to CPU\n");
+            fclose(file);
+            return 1;
+        }
+        nes->ppu->chr_ram_enabled = true;
+        memset(nes->ppu->chr_rom, 0, sizeof(nes->ppu->chr_rom));
+        printf("ℹ️ No CHR-ROM: using CHR-RAM (8 KB)\n");
     }
 
-    printf("✅ CPU reset vector set to 0x%04X\n", cpu->PC);
+    fclose(file);
+
+    uint16_t reset_vector;
+    
+    if (prg_size == 1) {
+        // ROM 16KB : mirroring
+        reset_vector = nes->prg_rom[0x3FFC] | (nes->prg_rom[0x3FFD] << 8);
+    } else {
+        // ROM 32KB
+        reset_vector = nes->prg_rom[0x7FFC] | (nes->prg_rom[0x7FFD] << 8);
+    }
+    
+    printf("Reset vector: 0x%04X\n", reset_vector);
+    nes->PC = reset_vector;
+    
+    printf("First 3 opcodes: %02X %02X %02X\n", 
+           nes_read(nes, reset_vector),
+           nes_read(nes, reset_vector + 1),
+           nes_read(nes, reset_vector + 2));
+    
+    printf("\nROM content at reset vector:\n");
+    for (int i = 0; i < 16; i++) {
+        printf("0x%04X: 0x%02X\n", reset_vector + i, nes_read(nes, reset_vector + i));
+    }
+
+    printf("✅ ROM loaded successfully. PC set to 0x%04X\n", nes->PC);
+    
+    return 0;
 }
-
 
 // LSR – Logical Shift Right
 void cpu_lsr(CPU *nes, uint16_t addr, bool accumulator) {
@@ -955,7 +1028,7 @@ void nes_emulation_cycle(CPU *nes) {
             break;
 
         case 0x80: { // NOP immediate
-            uint8_t operand = nes->prg_memory[nes->PC];
+            uint8_t operand = nes->prg_rom[nes->PC];
             nes->PC += 1;
             printf("NOP #$%02X at PC=0x%04X\n", operand, nes->PC - 2);
             break;
@@ -1514,8 +1587,8 @@ void nes_emulation_cycle(CPU *nes) {
         }
 
         case 0xE0: {
-            printf("CPX #$%02X at PC=0x%04X\n", nes->prg_memory[nes->PC], nes->PC - 1);
-            uint8_t value = nes->prg_memory[nes->PC];
+            printf("CPX #$%02X at PC=0x%04X\n", nes->prg_rom[nes->PC], nes->PC - 1);
+            uint8_t value = nes->prg_rom[nes->PC];
             nes->PC += 1;
 
             uint8_t result = nes->X - value;
@@ -1544,7 +1617,7 @@ void nes_emulation_cycle(CPU *nes) {
         }
 
         case 0xE7: { // SBC Zero Page
-            uint8_t zp_addr = nes->prg_memory[nes->PC];
+            uint8_t zp_addr = nes->prg_rom[nes->PC];
             nes->PC += 1;
 
             uint8_t value = nes_read(nes, zp_addr);
@@ -1579,7 +1652,7 @@ void nes_emulation_cycle(CPU *nes) {
             break;
 
         case 0xEC: { // CPX absolute
-            uint16_t addr = nes->prg_memory[nes->PC] | (nes->prg_memory[nes->PC + 1] << 8);
+            uint16_t addr = nes->prg_rom[nes->PC] | (nes->prg_rom[nes->PC + 1] << 8);
             nes->PC += 2;
 
             uint8_t value = nes_read(nes, addr);

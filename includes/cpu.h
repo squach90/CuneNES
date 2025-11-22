@@ -4,12 +4,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "ppu.h"
-#include "cartridge.h"
 
 typedef struct {
     // == Memory ==
     uint8_t ram[2048];      // RAM (2 KB)
-    uint8_t prg_memory[0x10000]; // 64 KB CPU addressable memory map
+    uint8_t prg_rom[32768]; // PRG-ROM (max 32 KB)
+
+    uint8_t prg_banks;
 
     // == CPU Registers ==
     uint8_t A;   // Accumulateur
@@ -24,8 +25,6 @@ typedef struct {
     uint8_t gfx[256 * 240]; // Framebuffer
 
     uint8_t key[8]; // 8 buttons : A, B, Select, Start, Up, Down, Left, Right
-
-    uint8_t prg_banks; // 1 = 16 KB, 2 = 32 KB
 
     PPU *ppu;
     uint64_t cycles;
@@ -42,8 +41,6 @@ void nes_write(CPU *nes, uint16_t addr, uint8_t value);
 uint8_t nes_read(CPU *nes, uint16_t addr);
 
 void nes_emulation_cycle(CPU *nes);
-
-void cpu_load_cartridge(CPU *cpu, Cartridge *cart);
 
 void cpu_nmi(CPU *cpu);
 
